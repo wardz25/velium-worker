@@ -7,7 +7,7 @@
 --   * ntfy DIBUANG. Satu layanan, satu kunci, satu alamat.
 --   * Perintah : GET  /perintah?tim=X   (dulu: ntfy.sh/topic/json?poll=1)
 --   * Status   : POST /tim              (dulu: ntfy.sh/topic-status)
---   * Kunci beneran (X-Kunci). Topic ntfy itu publik — siapa pun yang tau
+--   * Kunci beneran (X-Kunci). Topic ntfy itu publik â€” siapa pun yang tau
 --     namanya bisa nembak FORCE ke tim lo.
 --   * CPU/RAM jadi keluar di panel.
 --
@@ -19,7 +19,7 @@
 --         beneran jalan sebelum lanjut ke berikutnya. Gagal -> diulang,
 --         terus dilaporin nama paketnya. Gak lagi tembak-lari.
 --
--- v4.2: BISA DIMATIIN. Dulu cuma bisa `pkill` — mati mendadak, notif
+-- v4.2: BISA DIMATIIN. Dulu cuma bisa `pkill` â€” mati mendadak, notif
 --       nyangkut, wake-lock kepegang, panel gak tau.
 --         lua5.4 velium_worker.lua stop     -> berhenti baik-baik
 --         lua5.4 velium_worker.lua status   -> jalan apa nggak
@@ -266,8 +266,8 @@
 --        Keadaan itu HARUS ditutup dulu -- 'am start' ke proses yang masih
 --        idup itu NO-OP, dia nangkring di server lama.
 --        Jadi perilakunya bener, cuma labelnya nyesatin. Sekarang:
---          ○ off   = mati total, tinggal dibuka
---          ◍ latar = proses idup tanpa jendela -> bakal ditutup dulu
+--          â—‹ off   = mati total, tinggal dibuka
+--          â— latar = proses idup tanpa jendela -> bakal ditutup dulu
 --        pidof digabung ke panggilan su yang SAMA -> nol ongkos tambahan.
 --
 -- v5.46: LISENSI DELTA DICEK DULU, sebelum buka semua client.
@@ -636,7 +636,7 @@
 --        semua akun keliatan bisu -> lisensi sehat dicurigai basi -> semua
 --        client ditutup buat bypass percuma. Ikut ditutup di sini.
 -- ============================================================
-local CONFIG_FILE = (os.getenv("HOME") or "/data/data/com.termux/files/home") .. "/velium_worker_config.lua"
+CONFIG_FILE = (os.getenv("HOME") or "/data/data/com.termux/files/home") .. "/velium_worker_config.lua"
 -- Backward compat: migrate old zenx files to velium if velium missing
 do
   local home = os.getenv("HOME") or "."
@@ -646,12 +646,13 @@ do
     if f1 and not f2 then f1:close(); os.execute("cp "..home.."/"..old.." "..home.."/"..new.." 2>/dev/null")
     else if f1 then f1:close() end; if f2 then f2:close() end
   end
+  end
   mig("zenx_worker_config.lua", "velium_worker_config.lua")
   mig("zenx_tap.txt", "velium_tap.txt")
   mig(".zenx_version", ".velium_version")
   mig(".zenx_aktif", ".velium_aktif")
 end
-local VERSION = "9.300-cf"
+VERSION = "9.300-cf"
 -- v9.205: SPLIT tim. tim 1 (loop utama) = client 1..TIM1_AKHIR, tim 2 (borong) =
 -- TIM1_AKHIR+1..total. Ubah angka ini buat ganti pembagian (default 15 -> tim1 1-15,
 -- tim2 16-total). GLOBAL (bukan local) biar gak makan slot 200 main chunk.
@@ -660,13 +661,13 @@ TIM1_AKHIR = 10
 -- Pakai kick_ts, bukan cuma nama akun: satu akun bisa kena kick berkali-kali,
 -- dan tiap kejadian harus diurus sendiri. Kalau kuncinya nama doang, kick
 -- kedua bakal dilewat dan client-nya nyangkut.
-local KICK_DIURUS = {}
+KICK_DIURUS = {}
 RESTART_TS_PROSES = 0   -- v9.77: ts RESTART terakhir yg udah diproses (anti-loop, global)
 DENYUT_UMUR = {}        -- v9.77: akun -> umur denyut (detik) terakhir. lapor kirim ke panel biak on/off akurat
-local C = { R="\27[31m",G="\27[32m",Y="\27[33m",C="\27[36m",D="\27[90m",N="\27[0m",BOLD="\27[1m",
+C = { R="\27[31m",G="\27[32m",Y="\27[33m",C="\27[36m",D="\27[90m",N="\27[0m",BOLD="\27[1m",
     KRML="\27[38;5;173m", KOP="\27[38;5;130m", KRMD="\27[38;5;94m" }
-local LOG_KIRIM = {}          -- v9.109: SEMUA baris log (buat dikirim ke panel), maks 60
-local function log(m,c)
+LOG_KIRIM = {}          -- v9.109: SEMUA baris log (buat dikirim ke panel), maks 60
+function log(m,c)
     print((c or "")..os.date("%H:%M:%S").." "..m..C.N)
     -- v9.109: catat SEMUA log (info/warn/ok/err lewat sini) -> dikirim ke panel
     -- tiap status. Biar bisa liat log RF lengkap dari panel tanpa buka Termux.
@@ -677,24 +678,24 @@ end
 -- warn() ikut kecatet (ditandain "!") supaya ERROR keliatan di panel juga.
 -- v5.30: status laporan ke panel. Dipakai buat nampilin kalau lapor GAGAL --
 -- dulu gagalnya diem dan panel keliatan kosong tanpa sebab yang jelas.
-local LAPOR_OK, LAPOR_SEBAB, LAPOR_WARN, LAPOR_TS = nil, nil, nil, 0
-local AKSI_SKRG = "mulai..."  -- lagi ngapain SEKARANG
-local LAPOR_KEY_AT = 0        -- v4.86: kapan terakhir ngabarin "butuh key"
-local BAWA_SEBAB = nil       -- v5.08: kenapa gagal munculin jendela
-local PERTAMA_DIEM = {}      -- v5.04: kapan worker pertama liat client idup tapi bisu
-local BYPASS_TERAKHIR = 0   -- v5.02: kapan terakhir nyoba bypass key
-local SUDAH_GRID = false      -- v4.30: udah pernah nata grid sejak worker nyala?
-local function setAksi(txt)
+LAPOR_OK, LAPOR_SEBAB, LAPOR_WARN, LAPOR_TS = nil, nil, nil, 0
+AKSI_SKRG = "mulai..."  -- lagi ngapain SEKARANG
+LAPOR_KEY_AT = 0        -- v4.86: kapan terakhir ngabarin "butuh key"
+BAWA_SEBAB = nil       -- v5.08: kenapa gagal munculin jendela
+PERTAMA_DIEM = {}      -- v5.04: kapan worker pertama liat client idup tapi bisu
+BYPASS_TERAKHIR = 0   -- v5.02: kapan terakhir nyoba bypass key
+SUDAH_GRID = false      -- v4.30: udah pernah nata grid sejak worker nyala?
+function setAksi(txt)
     AKSI_SKRG = tostring(txt or "")
 end
-local function catatKirim(baris)
+function catatKirim(baris)
     LOG_KIRIM[#LOG_KIRIM+1] = baris
     while #LOG_KIRIM > 20 do table.remove(LOG_KIRIM, 1) end
 end
 
-local function ok(m) log("OK  "..m,C.G) end
-local function err(m) log("ERR "..m,C.R) end
-local function info(m) log("--  "..m,C.C) end
+function ok(m) log("OK  "..m,C.G) end
+function err(m) log("ERR "..m,C.R) end
+function info(m) log("--  "..m,C.C) end
 
 -- v9.85: DETEKSI NAIK VERSI. Simpen versi ke file tiap nyala. Pas boot,
 -- bandingin file (versi lama) vs VERSION (sekarang). Kalau BEDA + file ADA =
@@ -724,7 +725,7 @@ DELTA_SLOT_DL = {}      -- v9.104: set slot Delta yg BARU didownload (panel tand
 WORKER_CEK_TS = 0       -- v9.106: ts terakhir cek versi worker (auto-update worker)
 LOG_PUSH_TS = 0         -- v9.109: ts terakhir push log ke panel (tiap 60 detik)
 
-local function warn(m)
+function warn(m)
     log("!   "..m,C.Y)
     catatKirim(os.date("%H:%M:%S") .. " ! " .. tostring(m))   -- v4.26: error nongol di panel
 end
@@ -743,7 +744,7 @@ end
 -- Sekalian ditambah header no-cache -- jaga-jaga ada proxy di jaringan RF
 -- yang gak peduli sama `?t=`.
 -- ============================================================
-local REPO_WORKER = "https://raw.githubusercontent.com/wardz25/velium-worker/main"
+REPO_WORKER = "https://raw.githubusercontent.com/wardz25/velium-worker/main"
 -- v9.110: cek command ada gak (GLOBAL biar gak makan jatah 200 lokal main-chunk +
 -- keliatan dari fungsi global auto-update). ada_perintah asli nested -> nil.
 function punya_perintah(nama)
@@ -751,7 +752,7 @@ function punya_perintah(nama)
     return ok2 == true or ok2 == 0
 end
 
-local function tulis_skrip_up(diam)
+function tulis_skrip_up(diam)
     local PREFIX = os.getenv("PREFIX") or "/data/data/com.termux/files/usr"
     -- v9.258: command pendek per preset (ketik `seed`/`market`/`farm`/`gag1` langsung).
     -- Inline di sini (bukan fungsi terpisah) biar gak nambah local ke main chunk (limit 200).
@@ -843,7 +844,7 @@ function urut_alami(a, b)
     return #a < #b
 end
 
-local function load_config()
+function load_config()
     -- v9.06: coba banyak path + INGET yg dicoba (buat debug kalau gagal).
     local paths = {
         CONFIG_FILE,
@@ -899,7 +900,7 @@ local function load_config()
     return nil
 end
 
-local function save_config(cfg)
+function save_config(cfg)
     local f=io.open(CONFIG_FILE,"w"); if not f then return false end
     f:write("{\n")
     f:write(string.format("  tim=%q,\n",cfg.tim))
@@ -960,7 +961,7 @@ local function save_config(cfg)
     f:write("}\n"); f:close(); return true
 end
 
-local function ask(p,d)
+function ask(p,d)
     io.write(C.Y.."? "..p..C.N)
     if d and d~="" then io.write(C.D.." ["..tostring(d):sub(1,44).."]"..C.N) end
     io.write(": "); io.flush()
@@ -970,7 +971,7 @@ end
 -- ============================================================
 -- shell
 -- ============================================================
-local function sh_lama(cmd)
+function sh_lama(cmd)
     -- timeout 5s: kalau cmd hang (mis. su nungguin izin), jangan freeze selamanya
     local h=io.popen("timeout 5 "..cmd.." 2>/dev/null"); if not h then return "" end
     local o=h:read("*all") or ""; h:close(); return o
@@ -991,24 +992,24 @@ end
 --   * tiap perintah punya penanda unik -> jawaban gak mungkin ketuker
 --   * kalau shell-nya mati di tengah jalan, kedeteksi & balik ke cara lama
 -- ============================================================
-local SHELL_AKTIF   = false      -- lagi kepakai apa nggak
-local SHELL_TULIS            -- pipa buat ngirim perintah
+SHELL_AKTIF   = false      -- lagi kepakai apa nggak
+SHELL_TULIS = nil          -- pipa buat ngirim perintah
 -- v4.75: dulu di /data/local/tmp -- itu punya root, Termux gak bisa bikin file
 -- di situ, jadi mkfifo gagal diem-diem lalu "gagal buka pipa". Pakai folder
 -- Termux sendiri: pasti bisa ditulis, dan root tetep bisa baca.
-local RUMAH     = os.getenv("HOME") or "."
-local SHELL_IN  = RUMAH .. "/.velium_in"
-local SHELL_OUT = RUMAH .. "/.velium_out"
-local SHELL_URUT = 0
+RUMAH     = os.getenv("HOME") or "."
+SHELL_IN  = RUMAH .. "/.velium_in"
+SHELL_OUT = RUMAH .. "/.velium_out"
+SHELL_URUT = 0
 
-local function shell_matikan()
+function shell_matikan()
     if SHELL_TULIS then pcall(function() SHELL_TULIS:close() end) end
     SHELL_TULIS, SHELL_AKTIF = nil, false
     os.execute("rm -f " .. SHELL_IN .. " " .. SHELL_OUT .. "* >/dev/null 2>&1")
 end
 
 -- kirim satu perintah ke shell tetap. balikin: keluaran, atau nil kalau gagal
-local function shell_jalan(cmd, batas)
+function shell_jalan(cmd, batas)
     if not SHELL_AKTIF or not SHELL_TULIS then return nil end
     SHELL_URUT = SHELL_URUT + 1
 
@@ -1048,7 +1049,7 @@ local function shell_jalan(cmd, batas)
     return nil
 end
 
-local function shell_nyalakan()
+function shell_nyalakan()
     -- pastiin su beneran jalan dulu (kalau nggak, jangan nekat buka pipa:
     -- io.open ke FIFO bakal nunggu selamanya kalau gak ada yang baca)
     local tes = sh_lama("su -c 'echo VELIUMOK'")
@@ -1110,7 +1111,7 @@ end
 -- Perintah yang ada udah dibungkus "su -c '...'". Kalau dijalanin DI DALAM
 -- shell yang emang udah root, bungkus itu bakal manggil su LAGI -- percuma,
 -- ongkosnya balik kayak semula. Jadi bungkusnya dibuka dulu.
-local function buka_bungkus_su(cmd)
+function buka_bungkus_su(cmd)
     local isi = cmd:match("^su %-c '(.*)'$") or cmd:match('^su %-c "(.*)"$')
     if isi then
         -- balikin escape yang dipakai pas ngebungkus
@@ -1121,7 +1122,7 @@ local function buka_bungkus_su(cmd)
 end
 
 -- pintu masuk tunggal: coba shell tetap dulu, gagal -> cara lama
-local function sh(cmd)
+function sh(cmd)
     if SHELL_AKTIF then
         local o = shell_jalan(buka_bungkus_su(cmd), 8)
         if o then return o end
@@ -1142,14 +1143,14 @@ function sh_tmo(cmd, tmo)
     if not h then return "" end
     local o = h:read("*all") or ""; h:close(); return o
 end
-local function sh_silent(cmd)
+function sh_silent(cmd)
     if SHELL_AKTIF then
         if shell_jalan(buka_bungkus_su(cmd), 8) then return end
     end
     os.execute("timeout 8 "..cmd.." >/dev/null 2>&1")
 end
 
-local function split(s,sep)
+function split(s,sep)
     local t={}
     for x in tostring(s or ""):gmatch("[^"..(sep or ",").."]+") do
         x=x:gsub("^%s+",""):gsub("%s+$","")
@@ -1158,7 +1159,7 @@ local function split(s,sep)
     return t
 end
 
-local function shq(s) return "'" .. tostring(s):gsub("'", "'\\''") .. "'" end
+function shq(s) return "'" .. tostring(s):gsub("'", "'\\''") .. "'" end
 
 -- ============================================================
 -- v4.78: BYPASS KEY DELTA (api.bypass.vip)
@@ -1170,8 +1171,8 @@ local function shq(s) return "'" .. tostring(s):gsub("'", "'\\''") .. "'" end
 -- lewat sh(), hasilnya SELALU kepotong dan keliatan kayak "API-nya gagal".
 -- Lagipula curl ke internet gak butuh root, jadi gak usah lewat su sama sekali.
 -- ============================================================
-local BYPASS_BASE    = "https://api.bypass.vip/premium/bypass?url="
-local BYPASS_REFRESH = "https://api.bypass.vip/premium/refresh?url="
+BYPASS_BASE    = "https://api.bypass.vip/premium/bypass?url="
+BYPASS_REFRESH = "https://api.bypass.vip/premium/refresh?url="
 
 -- ============================================================
 -- v5.33: KUNCI API BAWAAN, ditaruh langsung di sini.
@@ -1186,16 +1187,16 @@ local BYPASS_REFRESH = "https://api.bypass.vip/premium/refresh?url="
 -- Mau ganti kunci? Ubah di sini, push, terus `up` di tiap RF.
 -- Mau satu RF pakai kunci beda? `velium key set <APIKEY>` -- config lokal menang.
 -- ============================================================
-local BYPASS_KEY_BAWAAN = "621eeee7-973c-4789-a605-138214d87873"
+BYPASS_KEY_BAWAAN = "621eeee7-973c-4789-a605-138214d87873"
 
-local function url_encode(s)
+function url_encode(s)
     return (tostring(s or ""):gsub("[^%w%-%._~]", function(c)
         return string.format("%%%02X", string.byte(c))
     end))
 end
 
 -- ambil link dari clipboard Termux (butuh termux-api). balikin nil kalau gak ada.
-local function clipboard_ambil()
+function clipboard_ambil()
     local h = io.popen("timeout 10 termux-clipboard-get 2>/dev/null")
     if not h then return nil end
     local s = (h:read("*all") or ""):gsub("^%s+", ""):gsub("%s+$", "")
@@ -1210,10 +1211,10 @@ end
 -- isinya diisi setelah api_get ada. Ini pola baku buat lingkaran begini --
 -- dan WAJIB, kalau nggak bakal "attempt to call a nil value" pas jalan
 -- (jebakan 5.14: luac -p GAK nangkep ini).
-local ambil_apikey
+ambil_apikey = nil   -- dipesan dulu, isinya diisi setelah api_get ada
 
 -- panggil API bypass. balikin: kunci, pesanError, jawabanMentah
-local function bypass_kunci(cfg, link, pakaiRefresh)
+function bypass_kunci(cfg, link, pakaiRefresh)
     local apikey, asal = ambil_apikey(cfg)
     if apikey == "" then
         return nil, "kunci API bypass.vip belum ada.\n" ..
@@ -1263,9 +1264,9 @@ end
 -- Letaknya di /sdcard (bukan /data/data/<paket>), jadi SATU file ini kepakai
 -- semua client sekaligus -- gak usah per-client.
 -- ============================================================
-local DELTA_LICENSE = "/sdcard/Delta/Internals/Cache/license"
+DELTA_LICENSE = "/sdcard/Delta/Internals/Cache/license"
 
-local function tulis_lisensi(cfg, kunci)
+function tulis_lisensi(cfg, kunci)
     local path = (cfg and cfg.delta_license) or DELTA_LICENSE
     local dir  = path:match("^(.*)/") or "/sdcard/Delta/Internals/Cache"
 
@@ -1321,7 +1322,7 @@ end
 -- key lagi. Dalam keadaan itu client JANGAN dibunuh -- restart gak bikin kunci
 -- masuk, cuma muter-muter sambil ngabisin RAM.
 -- balikin: "ada" / "hilang" / "basi", umur dalam detik (nil kalau hilang)
-local function lisensi_keadaan(cfg)
+function lisensi_keadaan(cfg)
     -- v9.295: ARCEUS gak pakai lisensi Delta (executor beda -- gak ada berkas kunci
     -- Delta, gak ada layar "Enter key"). Anggap "ada" biar SEMUA cek lisensi lolos
     -- (start, antrian/denyut-rejoin, bypass, cek berkala) tanpa nyangkut.
@@ -1359,7 +1360,7 @@ local function lisensi_keadaan(cfg)
     return "hilang", nil
 end
 
-local function umur_ringkas(detik)
+function umur_ringkas(detik)
     if not detik then return "?" end
     local j = math.floor(detik / 3600)
     local m = math.floor((detik % 3600) / 60)
@@ -1372,7 +1373,7 @@ end
 -- rekam_sentuh manggil ini, jadi harus kedefinisi duluan.
 
 -- ============================================================
--- v4.25: ATUR GRID — susun jendela freeform biar gak numpuk.
+-- v4.25: ATUR GRID â€” susun jendela freeform biar gak numpuk.
 -- Butuh client jalan di mode freeform (win_mode 5). Caranya:
 --   1. baca ukuran layar (wm size)
 --   2. cari taskId tiap client (dumpsys)
@@ -1380,7 +1381,7 @@ end
 -- CATATAN: 'am task resizeTask' gak ada di semua ROM. Kalau gagal, dilaporin
 -- ke log (gak diem-diem), dan client tetep jalan normal -- cuma gak ketata.
 -- ============================================================
-local function layar_ukuran()
+function layar_ukuran()
     -- "Physical size: 720x1280" (kadang ada "Override size:" -> itu yang dipakai)
     local o = sh("su -c 'wm size'") or ""
     local w, h = o:match("Override size:%s*(%d+)x(%d+)")
@@ -1404,10 +1405,10 @@ end
 
 -- v5.14: DIPINDAH KE ATAS. Perintah panjang (nyari tombol, pantau sentuhan)
 -- perlu ngecek tanda berhenti, dan mereka dideklarasi jauh di atas sini.
-local PID_FILE  = "velium_worker.pid"
-local STOP_FILE = "velium_worker.stop"
+PID_FILE  = "velium_worker.pid"
+STOP_FILE = "velium_worker.stop"
 
-local function ada_stop()
+function ada_stop()
     local f = io.open(STOP_FILE, "r")
     if f then f:close(); return true end
     return false
@@ -1424,7 +1425,7 @@ _apb_waktu = 0
 -- game, link itu BENERAN dieksekusi -> client join & teleport sendiri. Kejadian
 -- pas kalibrasi tap: client malah pindah ke market.
 -- Sekarang: pindahin task-nya doang, gak nyentuh isi aplikasi sama sekali.
-local function bawa_depan(pkg)
+function bawa_depan(pkg)
     -- 1) lewat taskId. Di RedFinger cuma 'am stack list' yang ngasih taskId
     -- (dumpsys activity gagal). Keluarannya suka ke-wrap, jadi dibaca pakai
     -- posisi, bukan per baris.
@@ -1464,7 +1465,7 @@ end
 -- Termux masih di atas, yang nerima pencetan itu TERMUX. Koordinatnya bener,
 -- yang salah urutan tumpukannya.
 -- Jadi: disuruh naik -> DIPERIKSA lewat mCurrentFocus -> diulang kalau belum.
-local function pastikan_depan(pkg, maks)
+function pastikan_depan(pkg, maks)
     for coba = 1, (maks or 3) do
         bawa_depan(pkg)
         os.execute("sleep 2")
@@ -1484,7 +1485,7 @@ end
 -- Sekarang: client dipaksa ke depan dulu, hasilnya DIVERIFIKASI (dump-nya harus
 -- beneran punya paket itu), dan kotaknya cuma diambil dari simpul milik paket
 -- itu -- bukan simpul terbesar apa pun yang kebetulan ada.
-local function jendela_kotak(pkg)
+function jendela_kotak(pkg)
     local dump = "/sdcard/velium_kotak.xml"
     -- v6.13: pastikan_depan DIBUANG. Logika user (bener): kalau client di petak
     -- (freeform), dia UDAH di depan -- ukur langsung. Kalau ketutup/fullscreen,
@@ -1528,7 +1529,7 @@ end
 -- v5.07: 'kotak' boleh dioper dari luar -- kalau udah diukur, gak usah diukur
 -- ulang. Ngukur itu 2 panggilan su (~12 detik); pas nyapu 8 titik, itu doang
 -- bisa makan 1,5 menit percuma.
-local function tap_jendela(cfg, pkg, fx, fy, kali, kotak)
+function tap_jendela(cfg, pkg, fx, fy, kali, kotak)
     -- v6.11: JANGAN PERNAH TAP SEBELUM NGUKUR. Aturan tegas: tiap tap WAJIB
     -- ukur jendela fresh (jendela_kotak). Kotak yang dioper dari luar bisa BASI
     -- (jendela udah pindah/fullscreen sejak diukur) -> tap pakai koordinat lama
@@ -1593,7 +1594,7 @@ end
 -- v4.90: jalanin perintah yang butuh waktu lama. sh() dipatok 8 detik (sengaja,
 -- biar 'su' yang hang gak nahan worker), jadi buat rekam sentuhan perlu jalur
 -- sendiri.
-local function jalan_lama(cmd, detik)
+function jalan_lama(cmd, detik)
     local h = io.popen("timeout " .. (detik or 30) .. " " .. cmd .. " 2>/dev/null")
     if not h then return "" end
     local o = h:read("*all") or ""
@@ -1610,7 +1611,7 @@ end
 -- v4.91: ukuran layar APA ADANYA (gak dituker walau landscape). Panel sentuh
 -- lapornya dalam arah fisik, jadi pembaginya harus yang ini -- bukan
 -- layar_ukuran() yang udah dituker buat landscape.
-local function layar_fisik()
+function layar_fisik()
     local o = sh("su -c 'wm size'") or ""
     local w, h = o:match("Override size:%s*(%d+)x(%d+)")
     if not w then w, h = o:match("Physical size:%s*(%d+)x(%d+)") end
@@ -1624,7 +1625,7 @@ end
 -- panel cuma sampai 720, gak mungkin ngisi lebar layar 1280. Nyisain 2 arah.
 -- Dulu keempatnya dicoba, dan yang mustahil sering kepilih (asal jatuh di dalam
 -- jendela) -- itu yang bikin hasilnya ngawur pas jendelanya gede.
-local function arah_calon(maxX, maxY, W, H)
+function arah_calon(maxX, maxY, W, H)
     local bedaArah = ((maxY > maxX) ~= (H > W))
     if bedaArah then
         return {
@@ -1646,7 +1647,7 @@ end
 -- jendela). Cuma kejadian kalau jendelanya hampir sepenuh layar -- di ukuran
 -- grid beneran (226x293 / 610x330) risikonya 0%. Patokannya setelan putaran
 -- layar Android: rotasi 1 -> "diputar kiri", rotasi 3 -> "diputar kanan".
-local function arah_dari_rotasi(maxX, maxY, W, H)
+function arah_dari_rotasi(maxX, maxY, W, H)
     local rot = tonumber((sh("su -c 'settings get system user_rotation'") or ""):match("%d+"))
     if not rot then return nil end
     local calon = arah_calon(maxX, maxY, W, H)
@@ -1664,7 +1665,7 @@ end
 -- mestinya jatuh di mana (mis. tengah jendela), dipilih arah yang hasilnya
 -- paling dekat ke situ. Sekali terkunci, dipakai buat semua sentuhan berikutnya
 -- -- gak ada tebak-tebakan per sentuhan lagi.
-local function kunci_arah(sx, sy, maxX, maxY, W, H, sasX, sasY)
+function kunci_arah(sx, sy, maxX, maxY, W, H, sasX, sasY)
     local nx, ny = sx / maxX, sy / maxY
     local juara, jarakJuara
     for _, c in ipairs(arah_calon(maxX, maxY, W, H)) do
@@ -1678,7 +1679,7 @@ end
 -- v4.97: ubah SATU sentuhan mentah jadi titik layar + pecahan jendela.
 -- v4.98: kalau 'arah' dikasih, pakai itu (udah terkunci). Kalau nggak, jatuh ke
 -- cara lama: coba yang mungkin, ambil yang jatuh di dalam kotak.
-local function sentuh_ke_pecahan(sx, sy, maxX, maxY, W, H, kotak, arah)
+function sentuh_ke_pecahan(sx, sy, maxX, maxY, W, H, kotak, arah)
     local snx, sny = sx / maxX, sy / maxY
     local coba = arah and { arah } or arah_calon(maxX, maxY, W, H)
     for _, c in ipairs(coba) do
@@ -1693,7 +1694,7 @@ local function sentuh_ke_pecahan(sx, sy, maxX, maxY, W, H, kotak, arah)
     return nil
 end
 
-local function rekam_sentuh(pkg, kotak, detik)
+function rekam_sentuh(pkg, kotak, detik)
     local berkas = "/sdcard/velium_ev.txt"
     sh_silent("su -c 'rm -f " .. berkas .. "'")
     jalan_lama("su -c 'timeout " .. (detik or 30) .. " getevent -l > " .. berkas .. "'",
@@ -1790,7 +1791,7 @@ end
 -- Sekali ketemu buat satu ukuran, besoknya langsung tembak -- gak nyapu lagi.
 -- Ukuran berubah (ganti jumlah client) -> nyapu sekali lagi, terus diinget juga.
 -- ============================================================
-local TAP_FILE = "velium_tap.txt"
+TAP_FILE = "velium_tap.txt"
 
 -- titik sapuan. v5.10: gak cuma garis tengah lagi.
 -- Awalnya cuma x=0.5 karena tombolnya panjang -- tapi itu berasumsi dialognya
@@ -1816,7 +1817,7 @@ local TAP_FILE = "velium_tap.txt"
 --   3 baris (348x173) -> 0.833 , 0.808
 -- X-nya STABIL di ~0.83 semua -- yang geser cuma Y (makin pendek jendelanya,
 -- makin ke bawah). Jadi sapuan difokusin di kolom 0.83, Y-nya yang diayak.
-local TITIK_SAPU = {
+TITIK_SAPU = {
     -- kolom 0.83, Y persis di tiga titik yang kebukti dulu
     { 0.83, 0.72 }, { 0.83, 0.81 }, { 0.83, 0.71 },
     -- Y di antara & di luar ketiganya
@@ -1828,13 +1829,13 @@ local TITIK_SAPU = {
     { 0.50, 0.72 }, { 0.50, 0.81 }, { 0.25, 0.72 },
 }
 
-local function tap_muat()
+function tap_muat()
     -- v6.08: KALIBRASI BAWAAN (inline, gak nambah lokal -- batas 200). Dari
     -- kalibrasi lapangan (velium catat). RF baru langsung punya titik key buat
     -- ukuran umum, gak perlu catat manual. File velium_tap.txt NIMPA bawaan
     -- per-ukuran -> kalibrasi manual per-RF tetep menang.
-    --   290x330 = 8 client (4x2) · 610x330 = 4 client (2x2) · 610x653 = 2 client
-    --   396x293 = 2 baris · 348x173 = 3 baris
+    --   290x330 = 8 client (4x2) Â· 610x330 = 4 client (2x2) Â· 610x653 = 2 client
+    --   396x293 = 2 baris Â· 348x173 = 3 baris
     local t = {
         ["290x330"] = { fx = 0.819, fy = 0.686 },   -- 8 client (4x2)
         ["610x330"] = { fx = 0.830, fy = 0.681 },   -- 4 client (2x2)
@@ -1852,7 +1853,7 @@ local function tap_muat()
     return t
 end
 
-local function tap_simpan(kunci, fx, fy)
+function tap_simpan(kunci, fx, fy)
     local t = tap_muat()
     t[kunci] = { fx = fx, fy = fy }
     local f = io.open(TAP_FILE, "w")
@@ -1866,7 +1867,7 @@ end
 
 -- Android 10+ cuma ngizinin baca papan klip kalau aplikasinya LAGI DI DEPAN.
 -- Jadi Termux dimunculin sebentar, dibaca, terus balik lagi ke client.
-local function baca_klip()
+function baca_klip()
     sh_silent("su -c 'am start -n com.termux/com.termux.app.TermuxActivity'")
     os.execute("sleep 2")
     local h = io.popen("timeout 10 termux-clipboard-get 2>/dev/null")
@@ -1876,7 +1877,7 @@ local function baca_klip()
 end
 
 -- link key yang sah? (jangan ketipu sisa salinan lama)
-local function klip_link_key(isi)
+function klip_link_key(isi)
     if not isi or isi == "" then return nil end
     local link = isi:match("(https?://[^%s\"']+)")
     if not link then return nil end
@@ -1888,7 +1889,7 @@ local function klip_link_key(isi)
 end
 
 -- balikin: link, fx, fy, keterangan
-local function cari_tombol_key(cfg, pkg)
+function cari_tombol_key(cfg, pkg)
     local kotak, sebab = jendela_kotak(pkg)
     if not kotak then return nil, nil, nil, "gagal baca kotak jendela: " .. tostring(sebab) end
     local lebar  = kotak.R - kotak.L
@@ -1903,7 +1904,7 @@ local function cari_tombol_key(cfg, pkg)
     local tebakX, tebakY = nil, nil   -- v5.47: tebakan dari jumlah baris grid
     local adaKalibrasi = false
     local inget = tap_muat()[kunci]
-    -- v9.59: TOLERANSI ±8px. Bug user: ukuran window 290x327 gak match "290x330"
+    -- v9.59: TOLERANSI Â±8px. Bug user: ukuran window 290x327 gak match "290x330"
     -- (beda 3px, App Cloner kadang geser dikit) -> gak nemu kalibrasi -> tebak
     -- nyasar. Cari ukuran TERDEKAT di tabel (dalam 8px lebar & tinggi) -> pakai
     -- kalibrasi itu. Ukuran udah kita tau: 610x330=4, 396x330=6, 290x330=8,
@@ -1976,7 +1977,7 @@ local function cari_tombol_key(cfg, pkg)
         if tinggiLayar and tinggiLayar > 0 and tinggi > 0 then
             local baris = math.max(1, math.floor(tinggiLayar / tinggi + 0.5))
             -- v6.07: Y per jumlah baris (dari kalibrasi lapangan user):
-            --   1 baris 0.713 · 2 baris 0.723 · 3 baris 0.808
+            --   1 baris 0.713 Â· 2 baris 0.723 Â· 3 baris 0.808
             -- X SELALU ~0.83 di semua ukuran (temuan user). Jadi tebakan ini
             -- HAMPIR SELALU kena di percobaan pertama -- gak perlu sapu 16 titik.
             -- baris > 3 (jarang) pakai 0.808 (paling bawah). baris gak masuk akal
@@ -2078,7 +2079,7 @@ local function cari_tombol_key(cfg, pkg)
                            ", papan klip tetep kosong")
 end
 
-local function config_set_bypass(apikey)
+function config_set_bypass(apikey)
     local f = io.open(CONFIG_FILE, "r")
     if not f then
         return false, "config gak ada -- jalanin `velium` dulu buat setup"
@@ -2126,7 +2127,7 @@ end
 
 -- ============================================================
 -- v4.2: BISA DIMATIIN
--- Dulu satu-satunya cara berhenti itu `pkill -f velium_worker.lua` — mati
+-- Dulu satu-satunya cara berhenti itu `pkill -f velium_worker.lua` â€” mati
 -- mendadak: notif nyangkut, wake-lock kepegang, panel gak tau dia mati.
 --
 -- Lua polos gak bisa nangkep sinyal (kill/Ctrl+C) tanpa luaposix, jadi
@@ -2134,25 +2135,25 @@ end
 -- terus keluar baik-baik.
 -- ============================================================
 
-local function tulis_pid()
+function tulis_pid()
     local pid = tonumber(sh("echo $PPID")) or 0
     local f = io.open(PID_FILE, "w")
     if f then f:write(tostring(pid)); f:close() end
     return pid
 end
 
-local function baca_pid()
+function baca_pid()
     local f = io.open(PID_FILE, "r"); if not f then return nil end
     local p = tonumber(f:read("*l")); f:close(); return p
 end
 
-local function pid_hidup(pid)
+function pid_hidup(pid)
     if not pid then return false end
     return sh("ps -p " .. pid .. " -o comm=") ~= ""
 end
 
 
-local function hapus(f) os.remove(f) end
+function hapus(f) os.remove(f) end
 
 -- dipanggil pas keluar baik-baik: beresin semua yang nyangkut
 -- v9.83: cek RF SIAP di-reboot -- Termux:Boot kepasang + boot script ada.
@@ -2177,7 +2178,7 @@ function boot_siap()
     return true, ""
 end
 
-local function bersih(cfg, sebab)
+function bersih(cfg, sebab)
     print()
     info("Beres-beres (" .. (sebab or "?") .. ")...")
     sh_silent("termux-notification-remove velium_worker")
@@ -2189,7 +2190,7 @@ local function bersih(cfg, sebab)
 end
 
 -- ============================================================
--- API — Cloudflare Worker
+-- API â€” Cloudflare Worker
 -- ============================================================
 -- ============================================================
 -- v5.74: PILIH ALAT HTTP -- curl ATAU wget.
@@ -2226,7 +2227,7 @@ end
 -- per fungsi utama dan file ini udah mepet -- nambah lokal baru bikin gagal
 -- compile.
 -- ============================================================
-local RIW = {
+RIW = {
     file = (os.getenv("HOME") or ".") .. "/velium_riwayat.log",
     maks = 2000,
 }
@@ -2283,16 +2284,16 @@ function RIW.http.kirim_cmd(kunci, alamat, metode, berkas, detik)
         shq("Content-Type: application/json"), berkas, shq(alamat))
 end
 
-local TMP = "/data/data/com.termux/files/usr/tmp/velium_body.json"
+TMP = "/data/data/com.termux/files/usr/tmp/velium_body.json"
 
-local function api_get(cfg, jalur)
+function api_get(cfg, jalur)
     return sh(RIW.http.get_cmd(cfg.kunci, cfg.url .. jalur, 10))
 end
 
 -- v5.39: metode bisa dipilih (bawaan POST, biar pemakaian lama gak berubah).
 -- Perlu karena /perintah minta PUT -- dan tanpa ini setup gak bisa nyetel
 -- perintah awal sendiri.
-local function api_post(cfg, jalur, body, metode)
+function api_post(cfg, jalur, body, metode)
     local f = io.open(TMP, "w")
     if not f then TMP = "./velium_body.json"; f = io.open(TMP, "w") end
     if not f then return "" end
@@ -2302,12 +2303,12 @@ local function api_post(cfg, jalur, body, metode)
 end
 
 -- JSON kecil doang, cukup pola. gak perlu library.
-local function ambil_str(js, k) return tostring(js or ""):match('"'..k..'"%s*:%s*"(.-)"') end
-local function ambil_num(js, k) return tonumber(tostring(js or ""):match('"'..k..'"%s*:%s*(-?%d+)')) end
+function ambil_str(js, k) return tostring(js or ""):match('"'..k..'"%s*:%s*"(.-)"') end
+function ambil_num(js, k) return tonumber(tostring(js or ""):match('"'..k..'"%s*:%s*(-?%d+)')) end
 -- v4.32: escape LENGKAP. Dulu cuma \ dan " -- baris baru/tab dari output shell
 -- lolos mentah ke JSON -> laporan RUSAK -> Cloudflare nolak -> panel kira worker
 -- MATI padahal jalan. Sekarang semua karakter kontrol ikut di-escape.
-local function jstr(s)
+function jstr(s)
     s = tostring(s or ""):gsub('\\','\\\\'):gsub('"','\\"')
     s = s:gsub('\n','\n'):gsub('\r','\\r'):gsub('\t','\\t')
     s = s:gsub('%c', ' ')   -- sisa karakter kontrol lain -> spasi
@@ -2395,7 +2396,7 @@ end
 --
 -- Tetep GAK masuk GitHub: kuncinya ada di D1, bukan di berkas yang di-push.
 -- ============================================================
-local BYPASS_CACHE, BYPASS_CACHE_TS = nil, 0
+BYPASS_CACHE, BYPASS_CACHE_TS = nil, 0
 
 ambil_apikey = function(cfg)
     -- 1. config lokal MENANG -- buat RF yang sengaja dikasih kunci beda
@@ -2450,14 +2451,14 @@ end
 -- padahal game jalan. Set deteksi_longgar=true di config -> cukup "ada
 -- ActivityRecord" dianggap jalan. Efek samping: Roblox yang nyangkut di Home
 -- ikut kebaca "jalan". Bridge (/stat) tetep jadi penentu sebenernya.
-local DETEKSI_LONGGAR = false
+DETEKSI_LONGGAR = false
 -- v4.36: Roblox GANTI NAMA activity. Dulu cuma dikenal "ActivityNativeMain";
 -- di Roblox baru namanya "com.roblox.client.startup.MainGameActivity". Worker
 -- nyari nama lama -> gak pernah ketemu -> client SELALU kebaca off padahal
 -- game jalan normal. Sekarang dua-duanya (plus varian *GameActivity) dikenal.
-local PENANDA_GAME = { "ActivityNativeMain", "MainGameActivity" }
+PENANDA_GAME = { "ActivityNativeMain", "MainGameActivity" }
 
-local function pkg_running(pkg)
+function pkg_running(pkg)
     -- "beneran DI GAME" -- bukan cuma "ada ActivityRecord" (Home Roblox,
     -- key system, splash JUGA punya ActivityRecord tapi BUKAN di game).
     local o = sh("su -c 'dumpsys activity activities | grep ActivityRecord | grep " .. pkg .. "'")
@@ -2479,7 +2480,7 @@ end
 
 -- v4.29: ID device -- dipakai buat "1 tim = 1 RedFinger".
 -- android_id nempel per-device & gak berubah kecuali factory reset.
-local DEV_ID_CACHE
+DEV_ID_CACHE = nil
 -- v4.63: cek status SEMUA client dari SATU dump. Dulu pkg_running dipanggil
 -- per client -- tiap panggilan 'su' di RedFinger ~6 detik, jadi 4 client = ~24
 -- detik. Padahal ini jalan tiap 10 detik -> worker lebih banyak nunggu su
@@ -2496,7 +2497,7 @@ local DEV_ID_CACHE
 --            server lama dan gak pernah pindah walau linknya udah ganti)
 -- Gara-gara sama-sama ditulis "off", log "tutup paksa" keliatan gak masuk akal.
 -- Balikin: hasil[p] = ada jendela?, hidup[p] = prosesnya idup?
-local function pkg_running_semua(pkgs)
+function pkg_running_semua(pkgs)
     local hasil, hidup = {}, {}
     for _, p in ipairs(pkgs) do hasil[p] = false; hidup[p] = false end
 
@@ -2524,7 +2525,7 @@ local function pkg_running_semua(pkgs)
     return hasil, hidup
 end
 
-local function dev_id()
+function dev_id()
     if DEV_ID_CACHE then return DEV_ID_CACHE end
     local id = (sh("su -c 'settings get secure android_id'") or ""):match("%w+")
     if not id or id == "null" or #id < 4 then
@@ -2567,17 +2568,17 @@ function banner_karamel()
     end
     local dalam = wLbl + wVal + 5
     local KR, N = C.KRML, C.N
-    local function garis(kiri, kanan) return KR..kiri..string.rep("─", dalam)..kanan..N end
+    local function garis(kiri, kanan) return KR..kiri..string.rep("â”€", dalam)..kanan..N end
     io.write("\n")
-    io.write(garis("┌", "┐").."\n")
+    io.write(garis("â”Œ", "â”").."\n")
     for i, b in ipairs(isi) do
         local lbl = b[1]..string.rep(" ", wLbl - #b[1])
         local val = b[2]..string.rep(" ", wVal - #b[2])
         local sep = (i == 1) and " " or ":"
-        io.write(KR.."│ "..N..C.BOLD..lbl..N..KR.." "..sep.." "..N..C.KOP..val..N..KR.." │"..N.."\n")
-        if i == 1 then io.write(garis("├", "┤").."\n") end
+        io.write(KR.."â”‚ "..N..C.BOLD..lbl..N..KR.." "..sep.." "..N..C.KOP..val..N..KR.." â”‚"..N.."\n")
+        if i == 1 then io.write(garis("â”œ", "â”¤").."\n") end
     end
-    io.write(garis("└", "┘").."\n")
+    io.write(garis("â””", "â”˜").."\n")
     io.write("\n")
     io.flush()
 end
@@ -2588,7 +2589,7 @@ end
 -- vs in-game. Yg beneran nandain di dalam game + script jalan = akun LAPOR
 -- ke /stat (bridge cuma denyut dari dalam game). Sama persis kayak auto-rejoin.
 -- ============================================================
-local KONFIRMASI_POLL = 3    -- poll /stat tiap brp detik pas nungguin masuk game
+KONFIRMASI_POLL = 3    -- poll /stat tiap brp detik pas nungguin masuk game
 -- v4.60 FIX: dulu 45 detik -- padahal script cuma lapor tiap 120 detik kalau
 -- gak ada perubahan. Akibatnya client SEHAT sering keliatan basi -> gak dilewat
 -- -> DIBUNUH & DIBUKA ULANG percuma, terus ditungguin lapor lagi. Itu yang bikin
@@ -2598,17 +2599,17 @@ local KONFIRMASI_POLL = 3    -- poll /stat tiap brp detik pas nungguin masuk gam
 -- script molor bisa 2x -> laporan nyatanya tiap ~240 detik. Ambang 200 nyisain
 -- jarak cuma 80 detik: sekali molor, client SEHAT keliatan basi terus ditutup &
 -- dibuka ulang percuma. 300 ngasih toleransi 1,5x jarak lapor.
-local FRESH_WINDOW    = 300  -- akun "masih di game" kalau lapor <= sekian detik lalu
+FRESH_WINDOW    = 300  -- akun "masih di game" kalau lapor <= sekian detik lalu
 
 -- ambil ts (kapan terakhir akun lapor) dari string /stat
-local function bridge_ts(stat, akun)
+function bridge_ts(stat, akun)
     if not stat or not akun then return nil end
     local blok = stat:match('{[^{}]-"nama"%s*:%s*"' .. akun .. '"[^{}]-}')
     return blok and tonumber(blok:match('"ts"%s*:%s*(%d+)')) or nil
 end
 
 -- true kalau akun lapor fresh (masih beneran di game SEKARANG)
-local function bridge_fresh(stat, akun)
+function bridge_fresh(stat, akun)
     local ts = bridge_ts(stat, akun)
     -- v4.53 FIX: "skrg" di /stat itu ANGKA, tapi dulu dibaca pakai ambil_str
     -- (khusus teks berkutip) -> SELALU nil -> fungsi ini SELALU balik false.
@@ -2624,11 +2625,11 @@ end
 -- return true kalau kedeteksi masuk, false kalau timeout / dibatalin.
 -- v4.42: dideklarasi di depan -- tunggu_bridge perlu manggil ini, padahal
 -- definisinya jauh di bawah (butuh build_url dll).
-local cek_layar
+cek_layar = nil
 
-local INTIP_DETIK = 30   -- v4.42: kapan mulai ngintip layar (detik)
-local INTIP_ULANG = 10   -- v4.44: jeda sebelum cek ULANG (mastiin beneran nyangkut)
-local function tunggu_bridge(cfg, akun, ts0, batas, cek_batal, pkg, mapLink)
+INTIP_DETIK = 30   -- v4.42: kapan mulai ngintip layar (detik)
+INTIP_ULANG = 10   -- v4.44: jeda sebelum cek ULANG (mastiin beneran nyangkut)
+function tunggu_bridge(cfg, akun, ts0, batas, cek_batal, pkg, mapLink)
     local mulai = os.time()
     local sudahIntip = false
     -- v4.41: kalau client MASIH di layar game, kasih perpanjangan. Pas CPU 100%
@@ -2684,7 +2685,7 @@ end
 -- ============================================================
 -- kunci orientasi RF. "landscape"/"portrait" -> set, "" / nil -> jangan disenggol.
 -- user_rotation: 0=portrait, 1=landscape, 2=portrait kebalik, 3=landscape kebalik.
-local function set_orientasi(cfg)
+function set_orientasi(cfg)
     local o = (cfg.orientasi or ""):lower()
     if o ~= "landscape" and o ~= "portrait" then return end
     local rot = (o == "landscape") and 1 or 0
@@ -2699,12 +2700,12 @@ end
 -- Android suka RESET oom_score_adj balik -> makanya di-apply ULANG tiap ~menit.
 -- PENTING: worker (Termux) dilindungin LEBIH kuat dari client. jadi kalau RAM
 -- mentok, yg dikorbanin CLIENT (bisa di-rejoin), BUKAN worker (biar tetep mantau).
-local OOM_CLIENT = -300   -- client: dilindungin, tapi masih bisa dikorbanin kalau kepepet
-local OOM_WORKER = -800   -- worker: dilindungin lebih kuat, jangan sampe ke-kill
+OOM_CLIENT = -300   -- client: dilindungin, tapi masih bisa dikorbanin kalau kepepet
+OOM_WORKER = -800   -- worker: dilindungin lebih kuat, jangan sampe ke-kill
 -- v4.62: SATU panggilan su buat SEMUA paket. Tiap 'su -c' di RedFinger makan
 -- ~5 detik; dulu dipanggil per-paket (4 client = 5 panggilan = ~25 detik cuma
 -- buat keep-alive). Sekarang digabung -> sekali jalan.
-local function keep_alive_apply(cfg)
+function keep_alive_apply(cfg)
     if cfg.keep_alive == false then return end
     local bagian = {}
     for _, pkg in ipairs(split(cfg.pkgs)) do
@@ -2731,9 +2732,9 @@ end
 -- bakal dibunuh-buka terus tiap ronde: boros RAM, bikin client lain ikut
 -- kesenggol, dan gak pernah kelar. Lewat jatah -> berhenti nyentuh, catet aja
 -- biar keliatan di panel dan bisa dibenerin manual.
-local KILL_CATAT  = {}
-local KILL_MAKS   = 3      -- maks sekian kali bunuh...
-local KILL_JENDELA = 1800  -- ...dalam sekian detik (30 menit) per client
+KILL_CATAT  = {}
+KILL_MAKS   = 3      -- maks sekian kali bunuh...
+KILL_JENDELA = 1800  -- ...dalam sekian detik (30 menit) per client
 
 -- ============================================================
 -- v5.73: CATATAN KEJADIAN KE BERKAS -- buat DIAGNOSA, bukan buat dibaca live.
@@ -2779,7 +2780,7 @@ function RIW.catat(jenis, akun, ket)
     end
 end
 
-local function sisa_jatah_kill(pkg)
+function sisa_jatah_kill(pkg)
     local skrg, sisa = os.time(), {}
     for _, w in ipairs(KILL_CATAT[pkg] or {}) do
         if (skrg - w) < KILL_JENDELA then sisa[#sisa+1] = w end
@@ -2788,14 +2789,14 @@ local function sisa_jatah_kill(pkg)
     return KILL_MAKS - #sisa
 end
 
-local function catat_kill(pkg)
+function catat_kill(pkg)
     KILL_CATAT[pkg] = KILL_CATAT[pkg] or {}
     table.insert(KILL_CATAT[pkg], os.time())
 end
 
-local DEBUG_OPEN = false
+DEBUG_OPEN = false
 
-local function build_url(cfg, link_client)
+function build_url(cfg, link_client)
     -- v4.11: link PS PER-CLIENT (dari assign-ps panel). urutan prioritas:
     --   1. link_client (assign per akun dari panel) -- kalau dikasih
     --   2. cfg._ps_override (PS tim dari panel, lama)
@@ -2868,9 +2869,9 @@ end
 --   5 = freeform (jendela ngambang, bisa digeser)  <- yang dicari
 --   6 = multi-window (jalur Android 12+)
 --   0 = jangan minta apa-apa (kayak v4.0)
-local WIN_OK = nil   -- nil=belum dites, true=didukung, false=ditolak
+WIN_OK = nil   -- nil=belum dites, true=didukung, false=ditolak
 
-local function open_one(cfg, pkg, link_client, alasan, pakai_S)
+function open_one(cfg, pkg, link_client, alasan, pakai_S)
     -- v6.64: GUARD CAPTCHA. Kalau client kena captcha (penanda dari cek captcha),
     -- JANGAN rejoin -- percuma, captcha butuh solve manual, rejoin cuma mancing
     -- verif lagi. Semua jalur rejoin lewat sini, jadi cukup dijaga di satu titik.
@@ -3050,7 +3051,7 @@ end
 -- di kebun cuma star_bridge.lua (dari dalam game) -> keliatan di panel.
 -- ============================================================
 -- v4.31: prosesnya idup gak? (beda dari pkg_running yg nuntut UDAH DI LAYAR GAME)
-local function pkg_hidup(pkg)
+function pkg_hidup(pkg)
     return (sh("su -c 'pidof " .. pkg .. "'") or ""):match("%d") ~= nil
 end
 
@@ -3077,7 +3078,7 @@ end
 -- pasti lebih rendah dari hasil ukur di atas. Kalau dipatok angka tetap,
 -- deteksi bakal salah di RF dengan susunan beda.
 -- ============================================================
-local function grafis_kb(pkg)
+function grafis_kb(pkg)
     local o = sh("su -c 'dumpsys meminfo " .. pkg .. " 2>/dev/null | grep -i Graphics'") or ""
     -- baris bentuknya: "  Graphics:    48988      ..." -> ambil angka pertama
     local n = o:match("[Gg]raphics:%s*(%d+)")
@@ -3088,7 +3089,7 @@ end
 -- makan ~6s tiap panggil -- 10 client = 60s kalau satu-satu. Gabung ke 1 su
 -- (loop di shell), tandain tiap pkg -> parse. Balik map pkg -> KB.
 -- Dipakai loop grafis: cek semua sekali, yang <30MB baru diurus.
-local function grafis_semua(pkgs)
+function grafis_semua(pkgs)
     local hasil = {}
     if #pkgs == 0 then return hasil end
     -- bikin script shell: tiap pkg -> echo "PKG|" + graphics value
@@ -3183,7 +3184,7 @@ end
 --   Tahap 1  tungguin grafis NAIK lalu MENDATAR -> itu keadaan "udah di
 --            halaman awal, selesai gambar". Nilai itu yang jadi patokan.
 --   Tahap 2  baru tungguin dia naik tajam dari patokan itu -> masuk game.
-local function tunggu_masuk_game(pkg, batas, cek_batal)
+function tunggu_masuk_game(pkg, batas, cek_batal)
     batas = batas or 150
     local mulai = os.time()
     local nama = pkg:gsub("com%.roblox%.", "")
@@ -3260,7 +3261,7 @@ local function tunggu_masuk_game(pkg, batas, cek_batal)
         ("grafis cuma %.1f -> %.1f MB"):format(dasar / 1024, puncak / 1024)
 end
 
-local function tunggu_jalan(pkg, batas, cek_batal, cfg, link)
+function tunggu_jalan(pkg, batas, cek_batal, cfg, link)
     local mulai = os.time()
     local lastKabar = 0   -- v4.72: kabarin tiap 15 detik, biar gak keliatan diem
     -- v4.31: kalau prosesnya UDAH IDUP tapi belum sampai layar game, itu artinya
@@ -3281,7 +3282,7 @@ local function tunggu_jalan(pkg, batas, cek_batal, cfg, link)
         local lewat = os.time() - mulai
         if lewat - lastKabar >= 15 then
             lastKabar = lewat
-            io.write(("      %s — nungguin nyala... (%ds)\n"):format(
+            io.write(("      %s â€” nungguin nyala... (%ds)\n"):format(
                 pkg:gsub("com%%.roblox%%.",""), lewat))
         end
         if pkg_running(pkg) then
@@ -3307,7 +3308,7 @@ local function tunggu_jalan(pkg, batas, cek_batal, cfg, link)
                     return true, os.time() - mulai   -- grafis tinggi = di game
                 end
                 cobaMasuk = cobaMasuk + 1
-                io.write(("      %s — di Home (%.0fMB), tembak masuk #%d...\n"):format(
+                io.write(("      %s â€” di Home (%.0fMB), tembak masuk #%d...\n"):format(
                     pkg:gsub("com%%.roblox%%.",""), g/1024, cobaMasuk))
                 -- v8.29: TEMBAK PAKAI WEB URL (cara WC), bukan cuma '-p pkg'.
                 -- Dulu 'am start -a VIEW -p pkg' TANPA link = cuma bawa app ke
@@ -3365,7 +3366,7 @@ end
 -- v4.9: baca username Roblox tiap client dari prefs.xml. buat mapping client<->akun,
 -- biar worker tau "clienu = fifinx_5". dipakai auto-rejoin: kalau akun X berhenti
 -- lapor (keluar game), worker tau itu client mana -> rejoin client itu.
-local function baca_username(pkg)
+function baca_username(pkg)
     local path = "/data/data/" .. pkg .. "/shared_prefs/prefs.xml"
     local o = sh("su -c 'cat " .. path .. "'")
     -- <string name="username">fifinx_5</string>
@@ -3380,7 +3381,7 @@ end
 -- 1 RF = 1 game, jadi 1 loader (sesuai game tim) buat semua client.
 -- v5.29: url bisa DITIMPA panel (script per tim). Kalau urlPanel dikasih,
 -- itu yang dipakai; kalau nggak, jatuh ke cfg.script_url lokal RF kayak dulu.
-local function tulis_autoexec(cfg, urlPanel)
+function tulis_autoexec(cfg, urlPanel)
     -- v9.263: Arceus -> loader udah ditulis pasang.sh (velium.lua statis). Worker GAK usah
     -- nulis velium_loader.txt di sini (biar gak dobel loader + ilangin warning "GAGAL nulis").
     if cfg.executor == "arceus" then
@@ -3494,7 +3495,7 @@ end
 -- jendela Roblox ke-belakang. FRONT = am start tiap client yg udah jalan -> window
 -- muncul ke depan LAGI (Roblox udah jalan, am start cuma munculin window, gak restart).
 -- karena Delta freeform, semua jendela bisa nampil barengan di samping-samping.
-local function front_all(cfg, mapLink)
+function front_all(cfg, mapLink)
     local list = split(cfg.pkgs)
     local n = 0
     for _, pkg in ipairs(list) do
@@ -3515,11 +3516,11 @@ end
 -- sumber berbeda -- 4 client = 16 panggilan 'su' = ~96 detik cuma buat nyusun
 -- grid. Sekarang: satu dump, dipilah lokal; sumber cadangan cuma dipakai kalau
 -- masih ada yang belum ketemu.
-local POLA_TASK = {
+POLA_TASK = {
     "taskId=(%d+)", "Task{%w+%s+#(%d+)", "#(%d+)%s+type=",
     "taskId%s*=%s*(%d+)", "Task%s+id=(%d+)", "id=(%d+)",
 }
-local function task_id_semua(pkgs)
+function task_id_semua(pkgs)
     local hasil = {}
     local function pungut(o)
         for baris in (o or ""):gmatch("[^\r\n]+") do
@@ -3567,10 +3568,10 @@ end
 --   * Petak dihitung dari urutan cfg.pkgs (TETAP), bukan urutan buka -- worker
 --     suka ngurutin ulang, kalau ikut itu jendelanya pindah-pindah tiap ronde.
 -- ============================================================
-local SELA = 15   -- jarak antar jendela = SELA x 2
+SELA = 15   -- jarak antar jendela = SELA x 2
 
 -- templat dipilih tangan; rumus akar kuadrat boros (8 client jadi 3x3, nganggur 1)
-local SUSUNAN = {
+SUSUNAN = {
     [1]={1,1}, [2]={2,1}, [3]={3,1},  [4]={2,2},
     [5]={3,2}, [6]={3,2}, [7]={4,2},  [8]={4,2},
     [9]={3,3}, [10]={5,2},[11]={4,3}, [12]={4,3},
@@ -3581,7 +3582,7 @@ local SUSUNAN = {
     [16]={5,4},[17]={5,4},[18]={5,4},[19]={5,4},[20]={5,4},
 }
 
-local KUNCI_JENDELA = {
+KUNCI_JENDELA = {
     "app_cloner_current_window_left",   "app_cloner_current_window_top",
     "app_cloner_current_window_right",  "app_cloner_current_window_bottom",
     "app_cloner_original_window_left",  "app_cloner_original_window_top",
@@ -3676,7 +3677,7 @@ end
 -- Gunanya: satu client dipakai buat nyoba semua ukuran. Mau tau petaknya kalau
 -- nanti 10 client? Set jendela client ini ke ukuran itu, cari tombolnya,
 -- simpen. Gak usah beneran buka 10 client.
-local function petak_untuk(n, slot, cfg)
+function petak_untuk(n, slot, cfg)
     local W, H = layar_ukuran()
     if W == 0 or H == 0 then return nil, "gagal baca ukuran layar" end
     if not n or n < 1 then return nil, "jumlah client gak masuk akal" end
@@ -3718,14 +3719,14 @@ end
 -- Delta gak muat, tombolnya kepotong. Udah dicoba di 9 client: gagal.
 -- Jadi batas aman = 8 client (masih 2 baris, tinggi ~293px). Ini batas LAYAR,
 -- beda dari batas RAM -- dua-duanya harus dilewatin.
-local function baris_grid(n, W, H)
+function baris_grid(n, W, H)
     local s = SUSUNAN[n]
     if s then return s[2] end
     if W >= H then return math.ceil(n / math.ceil(math.sqrt(n))) end
     return math.ceil(math.sqrt(n))
 end
 
-local function grid_hitung(cfg, pkgsPilih)
+function grid_hitung(cfg, pkgsPilih)
     local W, H = layar_ukuran()   -- udah nuker W/H kalau layar landscape
     if W == 0 or H == 0 then return nil, "gagal baca ukuran layar (wm size)" end
 
@@ -3819,13 +3820,13 @@ local function grid_hitung(cfg, pkgsPilih)
     return peta, nil, kol, bar, W, H, lebar, tinggi
 end
 
-local function prefs_path(pkg)
+function prefs_path(pkg)
     return "/data/data/" .. pkg .. "/shared_prefs/" .. pkg .. "_preferences.xml"
 end
 
 -- tulis koordinat 1 client. balikin: berhasil, keterangan
 -- keterangan "udah pas" = gak ada yang ditulis (hemat 1 panggilan su)
-local function tata_satu(pkg, kotak, hapusDulu)
+function tata_satu(pkg, kotak, hapusDulu)
     local path = prefs_path(pkg)
     -- stderr digabung DI DALAM su -- kalau dibuang, penolakan ROM ikut kebuang
     -- dan kodenya ngira sukses padahal gagal.
@@ -3993,7 +3994,7 @@ function grid_satu(cfg, pkg)
     end
 end
 
-local function atur_grid_lama(cfg)
+function atur_grid_lama(cfg)
     local W, H, rot = layar_ukuran()
     if W == 0 or H == 0 then
         return 0, "gagal baca ukuran layar (wm size)"
@@ -4050,7 +4051,7 @@ local function atur_grid_lama(cfg)
     return sukses, (sukses == 0 and gagalPertama or nil), kol, bar, info_layar
 end
 
-local function baca_ram()
+function baca_ram()
     local mi = sh("cat /proc/meminfo")
     local total = tonumber(mi:match("MemTotal:%s+(%d+)")) or 0
     local avail = tonumber(mi:match("MemAvailable:%s+(%d+)")) or 0
@@ -4069,7 +4070,7 @@ end
 -- v4.39: SEMUA kode error Roblox ketangkep (formatnya selalu "Error Code: NNN"),
 -- tapi penanganannya BEDA-BEDA. Asal masuk ulang buat semua error itu bahaya:
 -- kode 268 justru artinya "kebanyakan nyoba" -- diulang malah makin diblok.
-local ERROR_SIFAT = {
+ERROR_SIFAT = {
     -- masuk ulang langsung: koneksi putus / kelempar biasa
     [260]="ulang", [261]="ulang", [262]="ulang", [269]="ulang", [270]="ulang",
     [272]="ulang", [273]="ulang", [277]="ulang", [279]="ulang", [280]="ulang",
@@ -4087,7 +4088,7 @@ local ERROR_SIFAT = {
     [522]="manual",   -- place dibatesin
     [523]="manual",
 }
-local ERROR_TANDA = {
+ERROR_TANDA = {
     "Error Code", "Disconnected", "Reconnect",
     "lost connection", "kicked", "Please check your internet",
 }
@@ -4104,18 +4105,18 @@ local ERROR_TANDA = {
 -- `velium key` bisa kepotong di tengah jalan.
 -- CATATAN: daftar ini masih SEMENTARA (belum dicocokin ke dump layar asli).
 -- Tambahin sendiri lewat config: key_tanda="Kata A,Kata B"
-local KEY_TANDA = {
+KEY_TANDA = {
     "platorelay", "Key System", "KeySystem", "Get Key", "Getting Key",
     "Copy Key", "Enter Key", "Paste Key", "Checkpoint", "key expired",
     "Delta Key", "Verify Key",
 }
-local HOME_TANDA = {
+HOME_TANDA = {
     "Access to popular games", "check your age",
     "Discover", "Charts", "Marketplace",
     -- v4.83: "Unlock" DICABUT dari sini. Itu tombol yang lazim di halaman key,
     -- jadi layar key kebaca Home -> client dibunuh percuma.
 }
-local NYANGKUT_TANDA = {
+NYANGKUT_TANDA = {
     "Loading", "Injecting", "Please wait", "Checking", "Verifying",
 }
 -- balikin: pesan, sifat ("ulang"/"tunggu"/"manual")
@@ -4123,7 +4124,7 @@ local NYANGKUT_TANDA = {
 -- Alasannya: perintah `velium intip` harus nunjukin penilaian yang PERSIS SAMA
 -- kayak yang dipakai worker. Kalau logikanya disalin dua kali, cepat atau
 -- lambat dua-duanya beda -- dan diagnosa jadi nyesatin.
-local function klasifikasi_layar(isi)
+function klasifikasi_layar(isi)
     -- sidik layar: buat banding "berubah apa nggak" antar-intipan
     local sidik = #isi
     for t in isi:gmatch('text="([^"]+)"') do sidik = sidik + #t end
@@ -4263,7 +4264,7 @@ local function klasifikasi_layar(isi)
 end
 
 -- ambil dump layar 1 client. balikin isi XML, atau nil + sebab.
-local function ambil_dump(cfg, pkg, mapLink, lewatiFokus)
+function ambil_dump(cfg, pkg, mapLink, lewatiFokus)
     local dump = "/sdcard/velium_ui.xml"
     -- v4.89: dulu munculinnya pakai 'am start -d <link>'. Kalau client lagi GAK
     -- di dalam game (mis. layar key), link itu dieksekusi beneran -> client join
@@ -4450,7 +4451,7 @@ function cek_captcha_paksa(pkg)
     return ""   -- kebaca 5x tapi gak ada captcha/error
 end
 
-local function cek_error_ui(cfg, pkg, mapLink)
+function cek_error_ui(cfg, pkg, mapLink)
     -- v4.84: tinggal ngerangkai dua bagian di atas. Dulu ambil-dump dan
     -- penilaian nyampur di sini, jadi `velium intip` gak bisa makai penilaian
     -- yang sama tanpa nyalin kodenya.
@@ -4473,7 +4474,7 @@ cek_layar = cek_error_ui
 -- beneran -> client join sendiri, berulang tiap 15 detik. Sekarang cuma
 -- mindahin task ke depan: 1 panggilan su buat baca taskId semua client,
 -- 1 lagi buat mindahin semuanya sekaligus.
-local function jaga_depan(cfg, mapLink, cekJalan)
+function jaga_depan(cfg, mapLink, cekJalan)
     -- v7.14: DIAKTIFIN LAGI (user: error dulu bukan karena jaga_depan). Cara
     -- AMAN: pakai `monkey -p <pkg> LAUNCHER` buat bawa tiap client ke depan --
     -- ini GAK nge-tap koordinat layar (beda dari cara lama yang tap petak &
@@ -4546,7 +4547,7 @@ function cek_stop_panel(cfg, isi)
     return true
 end
 
-local function close_all(cfg, only, mapLink, tanpaMunculin)
+function close_all(cfg, only, mapLink, tanpaMunculin)
     local list = split(cfg.pkgs)
     local mau = nil
     if type(only) == "table" then
@@ -4638,8 +4639,8 @@ end
 
 -- cek_batal: dipanggil di sela-sela client. Buka 10 client bisa makan
 -- 5-10 menit; tanpa ini, STANDBY dari panel gak kebaca sampe semuanya kelar.
-local TERAKHIR_BUKA = {}   -- v4.68: pkg -> kapan terakhir dibuka worker
-local function open_all(cfg, only, cek_batal, lapor_fn, mapLink, mapAkun, fast, paksaMasuk)
+TERAKHIR_BUKA = {}   -- v4.68: pkg -> kapan terakhir dibuka worker
+function open_all(cfg, only, cek_batal, lapor_fn, mapLink, mapAkun, fast, paksaMasuk)
     -- v8.18: `only` bisa STRING (1 pkg, lama) ATAU TABLE {pkg=true,...} (banyak
     -- client dari FORCE:akun1,akun2). Helper: pkg ini termasuk yang mau dibuka?
     -- v9.121: ROTASI nyala -> loop buka/restart CUMA tim 1 (10 pkg pertama). Tim 2
@@ -5378,7 +5379,7 @@ local function open_all(cfg, only, cek_batal, lapor_fn, mapLink, mapAkun, fast, 
                     setAksi(string.format("buka client %d/%d: %s%s", urutBuka, totalBuka,
                         (mapAkun and mapAkun[pkg]) or pkg:gsub("com%.roblox%.",""),
                         coba > 1 and (" (ulang "..coba.."/"..maxc..")") or ""))
-                    io.write(string.format("[%d/%d] %s — buka%s...\n",
+                    io.write(string.format("[%d/%d] %s â€” buka%s...\n",
                         urutBuka, totalBuka, pkg, coba > 1 and (" (ulang ke-"..coba.."/"..maxc..")") or ""))
                     -- v4.17: catat ts SEBELUM buka -> nanti tunggu lapor BARU (ts naik)
                     local ts0 = (akun and not fast) and bridge_ts(api_get(cfg, "/stat"), akun) or nil
@@ -5486,7 +5487,7 @@ local function open_all(cfg, only, cek_batal, lapor_fn, mapLink, mapAkun, fast, 
                         -- naik (maks 3x). Baru di percobaan TERAKHIR nyerah (skip,
                         -- ketangkep ronde berikutnya).
                         if coba >= maxc then
-                            warn(string.format("[%d/%d] %s — belum masuk game setelah %dx, SKIP (coba ronde berikutnya)",
+                            warn(string.format("[%d/%d] %s â€” belum masuk game setelah %dx, SKIP (coba ronde berikutnya)",
                                 urut, totalBuka, pkg, maxc))
                             -- sukses tetep false -> masuk hitungan gagal, tapi gak nyangkut
                             break
@@ -5499,7 +5500,7 @@ local function open_all(cfg, only, cek_batal, lapor_fn, mapLink, mapAkun, fast, 
                         -- itu sendiri yg goyangin App Cloner service. Isolasi gacor
                         -- (v7.84) pas TANPA force-stop. Jadi retry cuma jeda 30s +
                         -- tembak ulang (open_one cara WC re-join, TANPA close).
-                        warn(string.format("[%d/%d] %s — %s, tunggu 30s + re-join (%d/%d)...",
+                        warn(string.format("[%d/%d] %s â€” %s, tunggu 30s + re-join (%d/%d)...",
                             urut, totalBuka, pkg, sebab or "belum masuk", coba, maxc))
                         if lapor_fn then pcall(lapor_fn) end
                         if cek_batal and cek_batal() then break end
@@ -5515,17 +5516,17 @@ local function open_all(cfg, only, cek_batal, lapor_fn, mapLink, mapAkun, fast, 
                         open_one(cfg, pkg, link_c, "buka-awal")
                         TERAKHIR_BUKA[pkg] = os.time()
                     elseif nyangkut then
-                        warn(string.format("[%d/%d] %s — nyangkut di Home; DIBUNUH terus dibuka ulang",
+                        warn(string.format("[%d/%d] %s â€” nyangkut di Home; DIBUNUH terus dibuka ulang",
                             urut, #list, pkg))
                         close_all(cfg, pkg, mapLink)
                         os.execute("sleep 2")
                     elseif pkg_hidup(pkg) then
-                        warn(string.format("[%d/%d] %s — prosesnya idup tapi gak kedeteksi di layar game; LANJUT ke client berikutnya",
+                        warn(string.format("[%d/%d] %s â€” prosesnya idup tapi gak kedeteksi di layar game; LANJUT ke client berikutnya",
                             urut, #list, pkg))
                         sukses = true   -- dihitung di blok bawah (jangan nambah di sini: dobel)
                         break
                     end
-                    warn(string.format("[%d/%d] %s — %s (%ds), ulang...", urut, #list, pkg, sebab, lama))
+                    warn(string.format("[%d/%d] %s â€” %s (%ds), ulang...", urut, #list, pkg, sebab, lama))
                     if lapor_fn then pcall(lapor_fn) end   -- v4.33: segerin tabel tiap percobaan
                     if cek_batal and cek_batal() then break end   -- v4.16: STANDBY di tengah retry
                     if coba < maxc then
@@ -5540,11 +5541,11 @@ local function open_all(cfg, only, cek_batal, lapor_fn, mapLink, mapAkun, fast, 
 
                 if sukses then
                     hasil.ok = hasil.ok + 1
-                    ok(string.format("[%d/%d] %s — jalan (%ds)", urut, #list, pkg, lama))
+                    ok(string.format("[%d/%d] %s â€” jalan (%ds)", urut, #list, pkg, lama))
                 else
                     hasil.gagal = hasil.gagal + 1
                     hasil.nama_gagal[#hasil.nama_gagal + 1] = pkg
-                    err(string.format("[%d/%d] %s — GAGAL: %s", urut, #list, pkg, sebab or "?"))
+                    err(string.format("[%d/%d] %s â€” GAGAL: %s", urut, #list, pkg, sebab or "?"))
                 end
 
                 -- lapor ke panel di sela-sela, biar gak "ilang" bermenit-menit
@@ -5859,18 +5860,18 @@ end
 -- ============================================================
 -- notifikasi
 -- ============================================================
-local NOTIF_ID="velium_worker"
-local function notify(title,content)
+NOTIF_ID="velium_worker"
+function notify(title,content)
     local function e(s) return (s or ""):gsub('"','\\"') end
     sh_silent(string.format('termux-notification --id %s --title "%s" --content "%s" --ongoing --priority low --alert-once',
         NOTIF_ID, e(title), e(content)))
 end
-local function notify_clear() sh_silent("termux-notification-remove "..NOTIF_ID) end
+function notify_clear() sh_silent("termux-notification-remove "..NOTIF_ID) end
 
 -- ============================================================
 -- lapor status -> POST /tim
 -- ============================================================
-local function baca_cpu()
+function baca_cpu()
     local l1 = tonumber(sh("cat /proc/loadavg"):match("^([%d%.]+)")) or 0
     local ncpu = tonumber(sh("nproc")) or 4
     local pct = math.floor(l1/ncpu*100+0.5)
@@ -5881,7 +5882,7 @@ end
 -- manggil pkg_running SENDIRI per client -- 4 client = 4 panggilan su (~24
 -- detik) TIAP LAPOR. Itu yang bikin panel telat banget update-nya, sekaligus
 -- bikin satu putaran loop jadi panjang.
-local function lapor(cfg, isi_perintah, cache)
+function lapor(cfg, isi_perintah, cache)
     local used, free, total = baca_ram()
     local list = split(cfg.pkgs)
     local parts, jalan = {}, 0
@@ -5995,7 +5996,7 @@ end
 -- ============================================================
 -- perintah -> GET /perintah?tim=X
 -- ============================================================
-local function is_target(w, targets)
+function is_target(w, targets)
     if not w or w == "" then return false end
     local wl = w:lower()
     for _, tgt in ipairs(split(targets)) do
@@ -6006,7 +6007,7 @@ end
 
 -- ============================================================
 -- v4.1: pindai paket Roblox yang kepasang di device ini
--- Ngetik 6-10 nama paket manual itu gampang typo, dan typo-nya diem —
+-- Ngetik 6-10 nama paket manual itu gampang typo, dan typo-nya diem â€”
 -- pgrep gak nemu, client gak kebuka, gak ada error. Mending dipindai.
 -- ============================================================
 -- v6.25: GLOBAL (bukan local) -- dipanggil dari open_all (lebih awal di file)
@@ -6052,7 +6053,7 @@ end
 --   * daftar paket client -> dipindai dari HP. Kalau hasilnya nol, berhenti:
 --     config tanpa client itu gak ada gunanya.
 -- ============================================================
-local function setup_otomatis(namaPreset)
+function setup_otomatis(namaPreset)
     -- v9.259: PRESET dipindah ke DALAM sini (dari main chunk) -- bebasin 1 slot
     -- local di main chunk (worker mepet limit 200). PRESET cuma dipake di sini.
     local PRESET = {
@@ -6203,8 +6204,8 @@ local function setup_otomatis(namaPreset)
     return cfg
 end
 
-local function setup_wizard()
-    print(C.BOLD..C.C.."\n=== VELIUM WORKER v"..VERSION.." — SETUP ===\n"..C.N)
+function setup_wizard()
+    print(C.BOLD..C.C.."\n=== VELIUM WORKER v"..VERSION.." â€” SETUP ===\n"..C.N)
 
     -- ============================================================
     -- v5.51: MULAI DARI CONFIG LAMA, bukan tabel kosong.
@@ -6811,7 +6812,7 @@ function restart_kerjakan(cfg, isi, mapAkun, mapLink, ada_stop)
 end
 
 
-local function run(cfg)
+function run(cfg)
     cfg.reopen_sec  = cfg.reopen_sec or 300
     -- v7.51: matiin logcat streaming yang mungkin masih jalan dari sesi lama
     -- (nulis spam ke file). Loop grafis udah gantiin, gak perlu logcat streaming.
@@ -7248,16 +7249,16 @@ local function run(cfg)
         if scLabel == "" and (cfg.script_url or "") ~= "" then
             scLabel = tostring(cfg.script_url):match("([^/]+)$") or ""
         end
-        io.write(C.BOLD..C.G.."  VELIUM WORKER v"..VERSION.."  ·  "..cfg.tim.."  ·  "..(cfg.game_label or "")..C.N
-            ..(scLabel ~= "" and (C.D.."  ·  "..C.C..scLabel..C.N) or "").."\n")
-        io.write(C.D.."  "..os.date("%H:%M:%S").."  ·  perintah: "..(isi ~= "" and isi or "-").."\n"..C.N)
+        io.write(C.BOLD..C.G.."  VELIUM WORKER v"..VERSION.."  Â·  "..cfg.tim.."  Â·  "..(cfg.game_label or "")..C.N
+            ..(scLabel ~= "" and (C.D.."  Â·  "..C.C..scLabel..C.N) or "").."\n")
+        io.write(C.D.."  "..os.date("%H:%M:%S").."  Â·  perintah: "..(isi ~= "" and isi or "-").."\n"..C.N)
         io.write("\n")
         -- tabel
         local list = split(cfg.pkgs)
         local jalan = 0
-        io.write(C.D.."  ┌──────────┬────────────────┬────────────┬──────────┐\n"..C.N)
-        io.write(C.D.."  │ "..C.N.."CLIENT   "..C.D.."│ "..C.N.."AKUN           "..C.D.."│ "..C.N.."SERVER     "..C.D.."│ "..C.N.."STATUS   "..C.D.."│\n"..C.N)
-        io.write(C.D.."  ├──────────┼────────────────┼────────────┼──────────┤\n"..C.N)
+        io.write(C.D.."  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”\n"..C.N)
+        io.write(C.D.."  â”‚ "..C.N.."CLIENT   "..C.D.."â”‚ "..C.N.."AKUN           "..C.D.."â”‚ "..C.N.."SERVER     "..C.D.."â”‚ "..C.N.."STATUS   "..C.D.."â”‚\n"..C.N)
+        io.write(C.D.."  â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤\n"..C.N)
         local beku = 0
         for _, pkg in ipairs(list) do
             local run = cacheRun[pkg]
@@ -7270,17 +7271,17 @@ local function run(cfg)
             local akun = mapAkun[pkg] or "?"
             local srv = mapPsNama[pkg] or "public"
             local st, warna
-            if run == nil then st, warna = "◌ cek...", C.D      -- belum kecek
+            if run == nil then st, warna = "â—Œ cek...", C.D      -- belum kecek
             elseif run and cacheBridge[pkg] == false and mapAkun[pkg] then
                 -- window-nya ada tapi script gak lapor -> dikuncupin / beku
-                st, warna = "◐ beku", C.Y
-            elseif run then st, warna = "● jalan", C.G
+                st, warna = "â— beku", C.Y
+            elseif run then st, warna = "â— jalan", C.G
             elseif cacheHidup[pkg] then
                 -- v5.45: prosesnya IDUP tapi jendelanya gak ada. Beda dari mati:
                 -- ini HARUS ditutup dulu sebelum dibuka, dan itu yang bikin log
                 -- "tutup paksa" muncul buat client yang keliatan "off".
-                st, warna = "◍ latar", C.C
-            else st, warna = "○ off", C.Y end
+                st, warna = "â— latar", C.C
+            else st, warna = "â—‹ off", C.Y end
             -- v5.34: nama akun dipotong dari DEPAN, bukan belakang.
             -- Pola nama akun itu awalan+nomor (wildnx_12, oliviainvent3), jadi
             -- yang MEMBEDAKAN ada di ujung belakang. Motong dari belakang bikin
@@ -7288,16 +7289,16 @@ local function run(cfg)
             -- huruf) -- dan itu nyesatin: keliatannya kayak 4 client login ke
             -- satu akun yang sama, padahal cuma kepotong.
             local akunTampil = akun
-            if #akunTampil > 14 then akunTampil = "…" .. akunTampil:sub(-13) end
-            io.write(string.format("  "..C.D.."│ "..C.N.."%-8s "..C.D.."│ "..C.N.."%-14s "..C.D.."│ "..C.C.."%-10s"..C.D.." │ "..warna.."%-8s"..C.D.." │\n"..C.N,
+            if #akunTampil > 14 then akunTampil = "â€¦" .. akunTampil:sub(-13) end
+            io.write(string.format("  "..C.D.."â”‚ "..C.N.."%-8s "..C.D.."â”‚ "..C.N.."%-14s "..C.D.."â”‚ "..C.C.."%-10s"..C.D.." â”‚ "..warna.."%-8s"..C.D.." â”‚\n"..C.N,
                 short:sub(1,8), akunTampil, srv:sub(1,10), st))
         end
-        io.write(C.D.."  └──────────┴────────────────┴────────────┴──────────┘\n"..C.N)
+        io.write(C.D.."  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜\n"..C.N)
         io.write("\n")
         -- ringkas
-        io.write(string.format("  "..C.G.."%d/%d jalan"..C.N.."%s  ·  CPU %d%%  ·  RAM %.1f/%.1fGB\n",
+        io.write(string.format("  "..C.G.."%d/%d jalan"..C.N.."%s  Â·  CPU %d%%  Â·  RAM %.1f/%.1fGB\n",
             jalan, #list,
-            beku > 0 and (C.Y.."  ·  "..beku.." beku"..C.N) or "",
+            beku > 0 and (C.Y.."  Â·  "..beku.." beku"..C.N) or "",
             cpu, used, total))
         -- v5.30: status laporan ke panel. Kalau ini GAGAL, tim bakal keliatan
         -- KOSONG di panel walau worker-nya sendiri jalan normal.
@@ -7312,13 +7313,13 @@ local function run(cfg)
         end
         -- log
         if #logBuf > 0 then
-            io.write("\n"..C.D.."  ── log ──\n"..C.N)
+            io.write("\n"..C.D.."  â”€â”€ log â”€â”€\n"..C.N)
             for _, l in ipairs(logBuf) do io.write(C.D.."  "..l.."\n"..C.N) end
         end
         io.flush()
     end
 
-    notify("Velium "..cfg.tim, "Standby — nungguin: "..cfg.targets)
+    notify("Velium "..cfg.tim, "Standby â€” nungguin: "..cfg.targets)
 
     local lastOpen, lastStatus = 0, 0
     local lastAutoRejoin = 0   -- v4.9: kapan terakhir cek auto-rejoin
@@ -8410,7 +8411,7 @@ local function run(cfg)
                 local pjDbg = ckK ~= "" and #ckK or 0
                 info((">>> DEBUG %s: client PAKAI akun '%s' (cookie %d char) | target: '%s' | %s"):format(
                     pkgPend, asli ~= "" and asli or "(kosong)", pjDbg, target,
-                    asli == target and "COCOK ✓" or "BEDA ✗"))
+                    asli == target and "COCOK âœ“" or "BEDA âœ—"))
 
                 if asli == target then
                     -- BERHASIL ganti
@@ -9661,7 +9662,7 @@ local function run(cfg)
 
         -- v4.24: status dasar buat panel (nanti ditimpa aksi spesifik kalau lagi kerja)
         if mati then
-            setAksi("standby — gak buka client")
+            setAksi("standby â€” gak buka client")
             -- v7.04: STOP (bukan STANDBY biasa) = STANDBY + KILL ALL client. User
             -- minta: pencet Stop -> langsung tutup semua client (balik awal/kosong),
             -- pas Force lagi mulai fresh. Cuma SEKALI pas transisi ke STOP (penanda
@@ -10094,7 +10095,7 @@ local function run(cfg)
                     if h.gagal > 0 then
                         err("Kelar: " .. ringkas)
                         err("Gagal: " .. table.concat(h.nama_gagal, ", "))
-                        notify("Velium "..cfg.tim, "GAGAL "..h.gagal.." client — cek Termux")
+                        notify("Velium "..cfg.tim, "GAGAL "..h.gagal.." client â€” cek Termux")
                     else
                         ok("Kelar: " .. ringkas)
                         notify("Velium "..cfg.tim, isi.." -> "..h.ok.." client jalan")
@@ -10127,7 +10128,7 @@ local function run(cfg)
 
         if (now - lastStatus) >= cfg.status_sec then
             local jalan, total = lapor(cfg, isi, cacheRun)
-            notify("Velium "..cfg.tim, jalan.."/"..total.." client jalan"..(hit and " · FORCE" or ""))
+            notify("Velium "..cfg.tim, jalan.."/"..total.." client jalan"..(hit and " Â· FORCE" or ""))
             lastStatus = now
         end
 
@@ -10949,7 +10950,7 @@ function jalankan_home(cfg, pkgMau)
     ok(("HOME selesai: %d client ditembak Brookhaven + grid ukuran 6. Out manual kalau mau."):format(#pkgMau))
 end
 
-local PERINTAH = (arg and arg[1] or ""):lower()
+PERINTAH = (arg and arg[1] or ""):lower()
 -- v9.260: `velium seed/market/farm/gag1` = alias `velium pasang <preset>`. Biar bisa
 -- ketik `velium market` (gak cuma `velium pasang market`). Pasang bakal generate command
 -- pendek (`market`/`seed`/dll di PATH) via tulis_skrip_up -> abis itu ketik `market` doang jalan.
@@ -13598,7 +13599,7 @@ if PERINTAH == "pasang" then
 
         print()
         print(C.BOLD .. C.G .. "=== " .. cfgOto.tim .. " SIAP JALAN ===" .. C.N)
-        info(cfgOto.game_label .. "  ·  " .. cfgOto.script_label)
+        info(cfgOto.game_label .. "  Â·  " .. cfgOto.script_label)
         print()
     end
 
@@ -16637,7 +16638,7 @@ end
 print(C.BOLD..C.C.."Velium Worker v"..VERSION.." (Termux)\n"..C.N)
 
 -- jangan dobel: 2 worker di 1 tim = client dibuka barengan, RAM jebol
-local pid_lama = baca_pid()
+pid_lama = baca_pid()
 if pid_hidup(pid_lama) then
     err("Udah ada worker jalan (pid " .. pid_lama .. ").")
     info("Matiin dulu:  lua5.4 velium_worker.lua stop")
@@ -16645,7 +16646,7 @@ if pid_hidup(pid_lama) then
 end
 hapus(STOP_FILE)   -- sisa dari sesi sebelumnya
 
-local cfg=load_config()
+cfg=load_config()
 
 -- v4.2: dijalanin Termux:Boot? Gak ada yang bisa ngetik jawaban wizard.
 -- Tanpa penjaga ini, worker nyangkut diem-diem nungguin io.read() selamanya.
@@ -16654,7 +16655,7 @@ local cfg=load_config()
 -- jadi klaim "sekali jalan langsung jadi" itu bohong: masih ada satu Enter
 -- yang harus dicari orangnya. Dan di RF yang dipasang borongan, satu prompt
 -- yang kelewat itu bikin RF-nya diem berjam-jam tanpa ada yang sadar.
-local NON_INTERAKTIF = (os.getenv("VELIUM_AUTO") == "1")
+NON_INTERAKTIF = (os.getenv("VELIUM_AUTO") == "1")
                        or ((arg and arg[1] or ""):lower() == "pasang"
                            and (arg and arg[2] or "") ~= "")
 
@@ -16670,23 +16671,23 @@ if not cfg then
     if lama then
         lama:close()
         warn("Ketemu config ntfy lama. v4.x pakai Cloudflare Worker, bukan ntfy.")
-        warn("Setup ulang — siapin URL Worker + kunci.")
+        warn("Setup ulang â€” siapin URL Worker + kunci.")
     else
         warn("Config kosong - setup dulu")
     end
     cfg=setup_wizard()
 elseif NON_INTERAKTIF then
-    ok("Config loaded (mode auto — langsung jalan)")
+    ok("Config loaded (mode auto â€” langsung jalan)")
 else
     ok("Config loaded")
     io.write(C.Y.."Run sekarang? (Y=run / E=edit ulang): "..C.N); io.flush()
     local c=io.read()
     if c=="E" or c=="e" then cfg=setup_wizard() end
 end
-local pid = tulis_pid()
+pid = tulis_pid()
 info("pid " .. pid .. " (matiin: lua5.4 velium_worker.lua stop)")
 
-local okrun,e=pcall(run,cfg)
+okrun,e=pcall(run,cfg)
 
 -- kalau run() keluar sendiri, bersih() udah dipanggil di dalem.
 -- Ini jaring pengaman buat error/Ctrl+C.
