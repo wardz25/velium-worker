@@ -743,7 +743,7 @@ end
 -- Sekalian ditambah header no-cache -- jaga-jaga ada proxy di jaringan RF
 -- yang gak peduli sama `?t=`.
 -- ============================================================
-local REPO_WORKER = "https://raw.githubusercontent.com/wardz25/velium-panel/main"
+local REPO_WORKER = "https://raw.githubusercontent.com/wardz25/velium-worker/main"
 -- v9.110: cek command ada gak (GLOBAL biar gak makan jatah 200 lokal main-chunk +
 -- keliatan dari fungsi global auto-update). ada_perintah asli nested -> nil.
 function punya_perintah(nama)
@@ -14431,7 +14431,7 @@ end
 -- v9.100: baca delta_versi.txt dari GitHub (versi Delta terbaru yg mau dipasang).
 -- Return versi string (trimmed) atau nil kalau gagal/kosong.
 function cek_delta_versi(cfg)
-    local URL = "https://raw.githubusercontent.com/wardz25/velium-panel/main/delta_versi.txt?v=" .. os.time()
+    local URL = "https://raw.githubusercontent.com/wardz25/velium-worker/main/delta_versi.txt?v=" .. os.time()
     local HOME = os.getenv("HOME") or "."
     local tmp = HOME .. "/.delta_versi_cek"
     os.remove(tmp)
