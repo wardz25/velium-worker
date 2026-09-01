@@ -514,7 +514,8 @@
 --        Yang bikin ini BISA otomatis penuh cuma satu hal: NOMOR TIM diambil
 --        dari server (/tim-kosong, CF v15-84), bukan diinget manusia. Sisanya
 --        cuma nilai tetap.
---        Game & script dari PRESET: farm / seed / market / gag1.
+--        Game dari PRESET: farm / seed / market / gag1 / hact / panen
+--        (v5.x: script DIHAPUS dari preset -- worker gak tau script Roblox).
 --        Yang SENGAJA gak diotomatiskan -- kalau salah, seluruh sistem mati
 --        tanpa gejala jelas, jadi dicek dulu dan setup BERHENTI kalau gagal:
 --          * sambungan panel (URL/kunci) -> dites sebelum apa pun ditulis
@@ -644,8 +645,7 @@ do
     local f1 = io.open(home.."/"..old, "r")
     local f2 = io.open(home.."/"..new, "r")
     if f1 and not f2 then f1:close(); os.execute("cp "..home.."/"..old.." "..home.."/"..new.." 2>/dev/null")
-    else if f1 then f1:close() end; if f2 then f2:close() end
-  end
+    else if f1 then f1:close() end; if f2 then f2:close() end end
   end
   mig("zenx_worker_config.lua", "velium_worker_config.lua")
   mig("zenx_tap.txt", "velium_tap.txt")
@@ -754,19 +754,10 @@ end
 
 function tulis_skrip_up(diam)
     local PREFIX = os.getenv("PREFIX") or "/data/data/com.termux/files/usr"
-    -- v9.258: command pendek per preset (ketik `seed`/`market`/`farm`/`gag1` langsung).
-    -- Inline di sini (bukan fungsi terpisah) biar gak nambah local ke main chunk (limit 200).
-    for _, pre in ipairs({ "seed", "market", "farm", "gag1", "hact", "panen" }) do
-        local jp = PREFIX .. "/bin/" .. pre
-        local ip = "#!" .. PREFIX .. "/bin/sh\ncurl -sL \"" .. REPO_WORKER .. "/pasang.sh\" | sh -s " .. pre .. "\n"
-        local lp = ""
-        local frp = io.open(jp, "r")
-        if frp then lp = frp:read("*all") or ""; frp:close() end
-        if lp ~= ip then
-            local fp = io.open(jp, "w")
-            if fp then fp:write(ip); fp:close(); os.execute("chmod +x " .. jp) end
-        end
-    end
+    -- v5.x: command pendek per preset (seed/market/farm/gag1/hact/panen) DIHAPUS.
+    -- Preset itu konsep "pilih script" -- worker gak lagi urus script, jadi
+    -- preset gak relevan lagi. Gak ada pintasan `/bin/{seed,market,farm,gag1,...}`
+    -- yang di-generate tiap worker nyala.
     local jalur = PREFIX .. "/bin/up"
     local isi = table.concat({
         "#!" .. PREFIX .. "/bin/sh",
@@ -909,10 +900,10 @@ function save_config(cfg)
     f:write(string.format("  targets=%q,\n",cfg.targets))
     f:write(string.format("  place_id=%q,\n",cfg.place_id))
     f:write(string.format("  game_label=%q,\n",cfg.game_label or ""))
-    f:write(string.format("  script_url=%q,\n",cfg.script_url or ""))
-    f:write(string.format("  script_label=%q,\n",cfg.script_label or ""))
+    -- v5.x: script_url + script_label DIBUANG. Worker gak lagi urus script Roblox.
+    -- Field ini gak boleh lagi ditulis ke config (gak ada yg baca).
     f:write(string.format("  link_code=%q,\n",cfg.link_code or ""))
-    f:write(string.format("  autoexec_dir=%q,\n",cfg.autoexec_dir or "/sdcard/Delta/Autoexecute"))
+    -- v5.x: autoexec_dir DIHAPUS dari config (worker gak lagi nulis loader).
     f:write(string.format("  executor=%q,\n",cfg.executor or "delta"))                             -- v9.263: persist executor
     f:write(string.format("  workspace_dir=%q,\n",cfg.workspace_dir or "/sdcard/Delta/Workspace"))  -- v9.263: persist path denyut
     f:write(string.format("  autoexec_bersih=%s,\n",tostring(cfg.autoexec_bersih ~= false)))
@@ -993,7 +984,7 @@ end
 --   * kalau shell-nya mati di tengah jalan, kedeteksi & balik ke cara lama
 -- ============================================================
 SHELL_AKTIF   = false      -- lagi kepakai apa nggak
-SHELL_TULIS = nil          -- pipa buat ngirim perintah
+SHELL_TULIS = nil       -- pipa buat ngirim perintah
 -- v4.75: dulu di /data/local/tmp -- itu punya root, Termux gak bisa bikin file
 -- di situ, jadi mkfifo gagal diem-diem lalu "gagal buka pipa". Pakai folder
 -- Termux sendiri: pasti bisa ditulis, dan root tetep bisa baca.
@@ -1211,7 +1202,7 @@ end
 -- isinya diisi setelah api_get ada. Ini pola baku buat lingkaran begini --
 -- dan WAJIB, kalau nggak bakal "attempt to call a nil value" pas jalan
 -- (jebakan 5.14: luac -p GAK nangkep ini).
-ambil_apikey = nil   -- dipesan dulu, isinya diisi setelah api_get ada
+ambil_apikey = nil
 
 -- panggil API bypass. balikin: kunci, pesanError, jawabanMentah
 function bypass_kunci(cfg, link, pakaiRefresh)
@@ -3374,121 +3365,22 @@ function baca_username(pkg)
     return u
 end
 
--- v4.8: tulis LOADER ke autoexec Delta (/sdcard/Delta/Autoexecute/).
--- Delta auto-jalanin file di folder ini pas masuk game (SETELAH user verif key).
--- jadi: worker buka client -> user verif key manual -> Delta baca autoexec ->
--- script auto-jalan. user cuma verif key, script masuk sendiri.
+-- v5.0 (legacy): dulu nulis loader ke /sdcard/Delta/Autoexecute/.
+--
+-- DINONAKTIFKAN: worker tidak lagi urus script Roblox. User yang handle
+-- sendiri script eksternal di luar worker. Tetap dipertahankan sebagai stub
+-- (return true) supaya sisa alur (run() dll) gak crash kalau ada yang manggil.
 -- 1 RF = 1 game, jadi 1 loader (sesuai game tim) buat semua client.
--- v5.29: url bisa DITIMPA panel (script per tim). Kalau urlPanel dikasih,
--- itu yang dipakai; kalau nggak, jatuh ke cfg.script_url lokal RF kayak dulu.
+-- v5.29: url bisa DITIMPA panel (script per tim) -- SUDAH TIDAK RELEVAN.
 function tulis_autoexec(cfg, urlPanel)
-    -- v9.263: Arceus -> loader udah ditulis pasang.sh (velium.lua statis). Worker GAK usah
-    -- nulis velium_loader.txt di sini (biar gak dobel loader + ilangin warning "GAGAL nulis").
-    if cfg.executor == "arceus" then
+    -- v5.0-5.41: loader + bersihkan folder autoexec DIBUANG. Worker gak pernah
+    -- lagi nulis loadstring(), gak pernah lagi download script dari GitHub,
+    -- gak pernah lagi nulis velium_loader.txt ke /sdcard/Delta/Autoexecute.
+    -- Stub dikembalikan true biar caller (run(), restart_kerjakan, dll) gak crash.
+    if cfg and cfg.executor == "arceus" then
         return true
     end
-    local url_script = (urlPanel and urlPanel ~= "") and urlPanel or cfg.script_url
-    if not url_script or url_script == "" then
-        warn("script_url kosong, autoexec dilewat")
-        return false
-    end
-    local AUTOEXEC_DIR = cfg.autoexec_dir or "/sdcard/Delta/Autoexecute"
-    -- loader: narik script dari GitHub. update cukup di GitHub, file autoexec tetap.
-    -- v9.261: HAPUS cache market DULU sebelum fetch. Bug: market.lua nyimpen
-    -- ZenxMarket_cache.lua (buat re-exec teleport) -- kalau cache lama, client
-    -- NYANGKUT di versi lama walau GitHub udah update / dihapus. delfile cache dulu
-    -- -> fresh join PASTI fetch versi baru. pcall + guard biar aman non-market.
-    local loader = 'pcall(function() if delfile then pcall(delfile,"ZenxMarket_cache.lua") pcall(delfile,"ZenxMarket_cache_time.txt") end end) loadstring(game:HttpGet("' .. url_script .. '"))()'
-    -- ============================================================
-    -- v5.61: LOADER = .txt DOANG.
-    --
-    -- Dasarnya pengalaman berulang user: pakai .txt SELALU jalan. Itu bukti
-    -- yang lebih kuat daripada tebakan gua, jadi salinan .lua dibuang.
-    --
-    -- Kenapa gak ditulis dua-duanya buat aman: kalau ternyata Delta baca SEMUA
-    -- berkas di folder itu, script kejalanin 2x -- dua kali unduh dari GitHub
-    -- dan dua salinan jalan barengan sebentar. Di RF 4GB dengan 4 client itu
-    -- pemborosan yang gak perlu, dan .txt udah kebukti cukup.
-    --
-    -- Catatan sejarah biar gak keulang: sepanjang sesi debug ini gejalanya
-    -- "autoexec kebaca ketulis & terverifikasi TAPI script gak pernah jalan".
-    -- Itu ada DUA sebab yang numpuk:
-    --   1. nama berkasnya .lua (bagian ini)
-    --   2. Delta nyangkut di layar "Enter key" -- autoexec gak jalan sampai
-    --      Delta kebuka (diberesin v5.46-5.58)
-    -- Yang bikin susah dilacak: semua pemeriksaan di sisi worker LOLOS.
-    -- ============================================================
-    local path = AUTOEXEC_DIR .. "/velium_loader.txt"
-    -- Tulis lewat file lokal dulu (Termux home, gampang), baru cp ke folder Delta
-    -- pakai su. Ini ngehindarin neraka nested-quote (su -c ' ... " ... ').
-    local tmp = os.getenv("HOME") .. "/.velium_loader.tmp"
-    local f = io.open(tmp, "w")
-    if not f then warn("gagal bikin file tmp loader"); return false end
-    f:write(loader); f:close()
-    -- ============================================================
-    -- v5.41: BERSIHIN FILE LAIN di folder autoexec.
-    --
-    -- Delta jalanin SEMUA file di folder ini. Jadi sisa script lama (mis.
-    -- text.txt yang pernah ditaruh manual, atau loader dari nama lama) bakal
-    -- jalan BARENGAN sama yang baru -> dua script aktif di satu client, aksi
-    -- dobel, atau yang bener ketimpa yang salah.
-    --
-    -- Digabung ke panggilan su yang SAMA -- tiap 'su' di RedFinger ~6 detik,
-    -- jadi pembersihan ini praktis gratis.
-    -- Yang dilewat cuma loader punya kita sendiri.
-    -- Mau dimatiin? config -> autoexec_bersih=false
-    -- ============================================================
-    local bersih = ""
-    if cfg.autoexec_bersih ~= false then
-        bersih = "for f in " .. AUTOEXEC_DIR .. "/*; do " ..
-                 '[ -f "$f" ] || continue; ' ..
-                 'case "$f" in */velium_loader.txt) ;; ' ..
-                 '*) echo "HAPUS:$f"; rm -f "$f";; esac; ' ..
-                 "done; "
-    end
-
-    -- v4.62: mkdir + cp + chmod + verifikasi digabung jadi SATU panggilan su.
-    -- Dulu 4 panggilan terpisah -- tiap 'su -c' di RedFinger ~5-7 detik, jadi
-    -- bagian ini sendirian makan ~30 detik pas worker nyala.
-    local cek = sh("su -c 'mkdir -p " .. AUTOEXEC_DIR .. "; " .. bersih ..
-                   "cp " .. tmp .. " " .. path ..
-                   "; chmod 664 " .. path ..
-                   "; cat " .. path .. "'")
-
-    -- lapor apa aja yang dibuang, biar gak ada yang ilang diam-diam
-    local dibuang = {}
-    for nm in tostring(cek):gmatch("HAPUS:([^\n]+)") do
-        dibuang[#dibuang+1] = nm:match("([^/]+)$") or nm
-    end
-    if #dibuang > 0 then
-        warn("file lain di folder autoexec dibuang: " .. table.concat(dibuang, ", "))
-        warn("  (Delta jalanin SEMUA file di situ -- kalau dibiarin, script dobel)")
-    end
-
-    if cek:find("loadstring", 1, true) then
-        -- v5.65: sebut LOKASI berkasnya, bukan cuma "ditulis". Dulu pesannya
-        -- cuma nyebut URL script -- jadi kalau ada yang bingung "kok berkasnya
-        -- gak ada", gak ada cara ngecek selain buka file manager.
-        ok("autoexec ditulis: " .. path)
-        info("  isi: loadstring(...\"" .. url_script .. "\")...")
-        -- tunjukin isi folder biar gak ada keraguan
-        local isiFolder = sh("su -c 'ls -l " .. AUTOEXEC_DIR .. " 2>&1 | tail -n +2'") or ""
-        if isiFolder ~= "" then
-            for baris in isiFolder:gmatch("[^\r\n]+") do
-                local nm = baris:match("(%S+)%s*$")
-                local sz = baris:match("%s(%d+)%s+%d%d%d%d%-") or baris:match("root%s+(%d+)%s")
-                if nm and nm ~= "" then
-                    info("  folder: " .. nm .. (sz and ("  " .. sz .. " B") or ""))
-                end
-            end
-        end
-        return true
-    else
-        warn("GAGAL nulis autoexec ke " .. path)
-        warn("  yang kebaca balik: " .. tostring(cek):sub(1, 120))
-        warn("  cek izin folder Delta / root masih jalan?")
-        return false
-    end
+    return true
 end
 
 -- v4.12: bawa SEMUA client freeform ke depan sekaligus. pas pencet Termux/app lain,
@@ -3742,13 +3634,15 @@ function grid_hitung(cfg, pkgsPilih)
     -- v8.19: kalau dikasih pkgsPilih (client yg MAU DIBUKA), grid dihitung buat
     -- JUMLAH ITU -- bukan semua cfg.pkgs. Jadi start 2 client = grid 2 petak
     -- lebar, bukan 10 petak kecil. Kalau nil -> semua (perilaku lama).
-    -- v9.266: GRID PAKSA PENUH buat MARKET (2-tim 3+3) / Arceus. Bug user: kalau cuma
+    -- v9.266: GRID PAKSA PENUH buat ARCEUS. Bug user: kalau cuma
     -- 1 tim (3 client) yg aktif, grid dihitung basis 3 -> jadi 2x2 (slot gede, layout
     -- beda tiap tim). User mau layout 3x2 TETAP (basis 6), client aktif tinggal nempatin
     -- slot-nya (0,1,2 = baris atas; 3,4,5 = baris bawah). Jadi dimensi + peta basis SEMUA
     -- client, walau yg dibuka cuma subset. peta punya posisi semua 6 -> caller ambil yg perlu.
+    -- v5.x: script_label == "MARKET" DIHAPUS (worker gak tau script). Arceus tetep
+    -- paksa penuh karena emulator freeform default-nya 1-client layout.
     local pkgsFull = split(cfg.pkgs)
-    local paksaPenuh = (cfg.script_label == "MARKET") or (cfg.executor == "arceus")
+    local paksaPenuh = (cfg.executor == "arceus")
     local pkgs
     if paksaPenuh then
         pkgs = pkgsFull                    -- basis PENUH (6) -> 3x2 konsisten
@@ -5938,13 +5832,12 @@ function lapor(cfg, isi_perintah, cache)
     local body = string.format(
         '{"tim":%s,"cpu":%d,"ram_used":%.1f,"ram_free":%.1f,"ram_total":%.1f,'..
         '"jalan":%d,"total":%d,"sticky":%s,"sig":%s,"clients":[%s],'..
-        '"aksi":%s,"log":[%s],"ver":%s,"dev":%s,"devnama":%s,"sc":%s,'..
+        '"aksi":%s,"log":[%s],"ver":%s,"dev":%s,"devnama":%s,'..
         '"place":%s,"grid":%d,"wnaik":%s,"wboot":%d,"wnaktif":%d,"ninstall":%d,"dslot":%s}',
         jstr(cfg.tim), baca_cpu(), used, free, total,
         jalan, #list, tostring((isi_perintah or ""):upper():find("FORCE") ~= nil),
         jstr(isi_perintah), table.concat(parts, ","),
         jstr(AKSI_SKRG), table.concat(logParts, ","), jstr(VERSION), jstr(dev_id()), jstr(devnama_now()),
-        jstr(cfg.script_label or ""),
         jstr(cfg.place_id or ""), math.floor(tonumber(cfg.grid_kolom) or 0),
         WVER_NAIK and jstr(WVER_NAIK) or "null",
         BOOT_TS or 0,
@@ -6054,20 +5947,21 @@ end
 --     config tanpa client itu gak ada gunanya.
 -- ============================================================
 function setup_otomatis(namaPreset)
-    -- v9.259: PRESET dipindah ke DALAM sini (dari main chunk) -- bebasin 1 slot
-    -- local di main chunk (worker mepet limit 200). PRESET cuma dipake di sini.
+    -- v5.x: PRESET TIDAK LAGI MENENTUKAN SCRIPT.
+    -- Script DIHAPUS total dari worker -- user yg urus sendiri. Preset di sini
+    -- cuma nentuin GAME (place + game_label), bukan script.
+    -- v5.x: preset -arceus TETEP ADA. suffix "-arceus" -> PAKSA logika Arceus (skip
+    -- auto-deteksi). Berguna buat RF baru yg Arceus-nya belom pernah jalan (folder
+    -- Workspace belom kebikin -> auto-deteksi meleset).
     local PRESET = {
-        farm   = { place = "129343810645058", game = "GAG 2",        sc = "STAR FARM", url = "gag2"   },
-        seed   = { place = "129343810645058", game = "GAG 2",        sc = "STAR SEED", url = "seed"   },
-        market = { place = "129954712878723", game = "GAG 1 MARKET", sc = "MARKET",    url = "market" },
-        gag1   = { place = "126884695634066", game = "GAG 1",        sc = "MARKET",    url = "market" },
-        hact   = { place = "126884695634066", game = "GAG 1 HACT",   sc = "HACT",      url = "hact"   },
-        panen  = { place = "126884695634066", game = "GAG 1 PANEN",  sc = "PANEN",     url = "panen"  },
+        farm   = { place = "129343810645058", game = "GAG 2"        },
+        seed   = { place = "129343810645058", game = "GAG 2"        },
+        market = { place = "129954712878723", game = "GAG 1 MARKET" },
+        gag1   = { place = "126884695634066", game = "GAG 1"        },
+        hact   = { place = "126884695634066", game = "GAG 1 HACT"   },
+        panen  = { place = "126884695634066", game = "GAG 1 PANEN"  },
     }
     local pre_raw = (namaPreset or ""):lower()
-    -- v9.263: suffix "-arceus" di preset apapun -> PAKSA logika Arceus (skip auto-deteksi).
-    -- Contoh: "market-arceus" = market game + path Arceus dipaksa. Berguna buat RF baru
-    -- yg Arceus-nya belom pernah jalan (folder Workspace belom kebikin -> auto-deteksi meleset).
     local paksaArceus = false
     if pre_raw:match("%-arceus$") then
         paksaArceus = true
@@ -6086,7 +5980,7 @@ function setup_otomatis(namaPreset)
     -- disentuh preset tetep kepakai
     local cfg = load_config() or {}
 
-    cfg.url   = cfg.url   or "https://dry-glitter-63e4.petagee5.workers.dev"
+    cfg.url   = cfg.url   or "https://velium-worker.edchen114.workers.dev"
     cfg.kunci = cfg.kunci or "nfSUwzy6aXTFF0a546iQ2tizIVBeTF3T2Z1Xx0rb"
 
     -- ---------- 1. cek sambungan DULU ----------
@@ -6127,22 +6021,19 @@ function setup_otomatis(namaPreset)
         info("Klaim: " .. tostring(ambil_str(rk, "sebab") or "device udah kedaftar"))
     end
 
-    -- ---------- 3. game & script dari preset ----------
+    -- ---------- 3. game dari preset ----------
+    -- v5.x: SCRIPT DIHAPUS dari preset. Preset cuma nentuin game/place.
     -- v9.255: PLACE BERUBAH? (mis. `pasang market` pas tadinya seed/GAG 2) -> CLOSE
     -- semua client biar reopen di PLACE BARU (GAG 1). Kalau gak, client nyangkut di
     -- world lama (GAG 2) padahal config udah GAG 1. Auto-pindah pas ganti preset.
     local placeLama = cfg.place_id
     cfg.place_id     = pre.place
     cfg.game_label   = pre.game
-    cfg.script_label = pre.sc
-    cfg.script_url   = "https://raw.githubusercontent.com/alzafabocahbocah-boop/ronihub/main/" .. pre.url
     ok("Game  : " .. cfg.game_label)
-    ok("Script: " .. cfg.script_label .. "  (" .. pre.url .. ")")
     -- v9.263: preset -arceus -> paksa executor + path Arceus (override auto-deteksi di bawah)
     if paksaArceus then
         cfg.executor      = "arceus"
         cfg.workspace_dir = "/sdcard/Arceus X/Workspace"
-        cfg.autoexec_dir  = "/sdcard/Arceus X/Autoexec"
         ok("Executor: ARCEUS X (dipaksa via preset -arceus)")
     end
     if placeLama and tostring(placeLama) ~= tostring(pre.place) then
@@ -6184,7 +6075,7 @@ function setup_otomatis(namaPreset)
     cfg.keep_alive        = true
     cfg.auto_key          = true
     cfg.disconnect_menit  = cfg.disconnect_menit or 3
-    cfg.autoexec_dir      = cfg.autoexec_dir or "/sdcard/Delta/Autoexecute"
+    -- v5.x: autoexec_dir DIHAPUS. Worker gak nulis loader ke folder autoexec lagi.
     -- v9.262: auto-deteksi executor per-RF (1 RF = 1 executor). Arceus X pake path beda
     -- ("Arceus X" ADA SPASI + folder Workspace beda). Denyut mesti dibaca dari sini.
     if not cfg.workspace_dir then
@@ -6199,7 +6090,7 @@ function setup_otomatis(namaPreset)
     end
     if cfg.shell_tetap == nil then cfg.shell_tetap = true end
     if cfg.auto_grid == nil then cfg.auto_grid = true end
-    if cfg.autoexec_bersih == nil then cfg.autoexec_bersih = true end
+    -- v5.x: autoexec_bersih DIHAPUS. Worker gak nulis loader, gak perlu bersihin.
 
     return cfg
 end
@@ -6214,12 +6105,11 @@ function setup_wizard()
     -- wizard ini ketulis ulang jadi bawaannya -- padahal save_config nulis
     -- SEMUA field. Contoh nyatanya: auto_key.
     --   auto_key gak pernah ditanya di setup (cuma bisa diedit manual di
-    --   config). Jadi tiap kali setup dijalanin ulang:
+    -- config). Jadi tiap kali setup dijalanin ulang:
     --     tostring(cfg.auto_key == true)  ->  nil == true  ->  "false"
-    --   Setelan true yang udah diisi manual KEHAPUS DIAM-DIAM, dan gejalanya
-    --   cuma "auto_key MATI" di log -- keliatan kayak user gak pernah nyetel.
-    -- Field lain yang senasib: delta_license, key_jam, autoexec_bersih,
-    -- suplai_master, script_label, dan setelan apa pun yang ditambah nanti.
+    -- Setelan true yang udah diisi manual KEHAPUS DIAM-DIAM, dan gejalanya
+    -- cuma "auto_key MATI" di log -- keliatan kayak user gak pernah nyetel.
+    -- v5.x: script_label DIHAPUS dari daftar (worker gak tau script lagi).
     -- ============================================================
     local cfg = {}
     do
@@ -6231,7 +6121,6 @@ function setup_wizard()
             if cfg.auto_key == true then jaga[#jaga+1] = "auto_key=true" end
             if (cfg.bypass_api_key or "") ~= "" then jaga[#jaga+1] = "kunci API" end
             if cfg.key_jam and cfg.key_jam ~= 24 then jaga[#jaga+1] = "key_jam=" .. cfg.key_jam end
-            if cfg.autoexec_bersih == false then jaga[#jaga+1] = "autoexec_bersih=false" end
             if #jaga > 0 then
                 info("  yang gak ditanya di bawah TETEP kepakai: " .. table.concat(jaga, ", "))
             end
@@ -6241,7 +6130,7 @@ function setup_wizard()
     -- v4.29: URL + kunci DIDULUIN, biar pas milih tim bisa langsung dicek ke
     -- server: nomor itu udah dipegang RedFinger lain apa belum.
     print(C.D.."  Alamat Cloudflare Worker (hasil `npx wrangler deploy`)."..C.N)
-    cfg.url=ask("URL panel","https://dry-glitter-63e4.petagee5.workers.dev")
+    cfg.url=ask("URL panel","https://velium-worker.edchen114.workers.dev")
     print(C.D.."  Kunci yang sama kayak `npx wrangler secret put KUNCI`."..C.N)
     cfg.kunci=ask("Kunci","nfSUwzy6aXTFF0a546iQ2tizIVBeTF3T2Z1Xx0rb")
 
@@ -6339,7 +6228,6 @@ function setup_wizard()
         info("Game RF ini sekarang: " .. cfg.game_label .. "  (Enter = biarin)")
     end
     local pil = ask("Pilih (1/2/3)", pilLama or "1")
-    local GH = "https://raw.githubusercontent.com/alzafabocahbocah-boop/ronihub/main/"
     if pil == "2" then
         cfg.place_id = "126884695634066"; cfg.game_label = "GAG 1"
     elseif pil == "3" then
@@ -6350,44 +6238,15 @@ function setup_wizard()
     print(C.G.."  -> "..cfg.game_label.." (place "..cfg.place_id..")"..C.N)
 
     -- ============================================================
-    -- v5.35: SCRIPT DIPILIH SENDIRI, gak lagi kepaksa ngikut game.
-    --
-    -- Dulu GAG 2 SELALU dapet `gag2` (star farm). Padahal satu tim GAG 2 bisa
-    -- dipakai buat dua hal beda: farm kebun (star farm) ATAU AFK beli
-    -- seed/gear/pet (star seed). Jadi pilihannya dipisah.
-    --
-    -- Bawaannya nyesuain game biar tinggal Enter buat kasus umum:
-    --   GAG 2 -> STAR FARM,  GAG 1 / market -> MARKET
+    -- v5.x: PEMILIHAN SCRIPT DIHAPUS.
+    -- Worker gak lagi urus script Roblox. Game doang yg ditanya (GAG 1 / GAG 2 /
+    -- GAG 1 MARKET). User yg handle script sendiri di luar worker.
     -- ============================================================
-    local SCRIPT_PILIHAN = {
-        { "STAR FARM", "gag2",   "farm kebun: tanam, collect, jual" },
-        { "STAR SEED", "seed",   "AFK beli seed + gear + pet, terima gift" },
-        { "MARKET",    "market", "akun market / TradeWorld" },
-    }
-    print("")
-    print(C.D.."  Script yang dijalanin client tim ini:"..C.N)
-    for i, sc in ipairs(SCRIPT_PILIHAN) do
-        print(C.D..string.format("    %d) %-10s -> %-7s  %s", i, sc[1], sc[2], sc[3])..C.N)
-    end
-    -- v5.51: bawaan ikut script yang SEKARANG kepakai, baru nyesuain game
-    local scLama = ({ ["STAR FARM"] = "1", ["STAR SEED"] = "2", ["MARKET"] = "3" })[cfg.script_label or ""]
-    if scLama then
-        info("Script RF ini sekarang: " .. cfg.script_label .. "  (Enter = biarin)")
-    end
-    local bawaanScript = scLama or ((cfg.game_label == "GAG 2") and "1" or "3")
-    local ps = ask("Pilih script (1/2/3)", bawaanScript)
-    local sc = SCRIPT_PILIHAN[tonumber(ps) or 0] or SCRIPT_PILIHAN[tonumber(bawaanScript)]
-    cfg.script_url = GH .. sc[2]
-    cfg.script_label = sc[1]
-    print(C.G.."  -> "..sc[1].."  "..cfg.script_url..C.N)
+
     print(C.D.."  Link join: paste share-URL ATAU linkCode. kosong=public."..C.N)
     cfg.link_code=ask("Link/code (Enter=public)","")
-    -- v5.36: pertanyaan "Folder autoexec" DIBUANG. Jawabannya selalu sama --
-    -- 20 RF = 20 kali mencet Enter buat nilai yang gak pernah beda. Nilainya
-    -- tetep ada di config (ada cadangan juga di run() & tulis_autoexec), jadi
-    -- kalau suatu saat ada RF yang foldernya beda, tinggal edit config-nya:
-    --   autoexec_dir="/path/lain"
-    cfg.autoexec_dir = cfg.autoexec_dir or "/sdcard/Delta/Autoexecute"
+    -- v5.x: pertanyaan "Folder autoexec" + cfg.autoexec_dir DIHAPUS. Worker gak
+    -- lagi nulis loader ke folder manapun.
 
     -- ===== paket: dipindai, bukan diketik =====
     print()
@@ -6831,7 +6690,7 @@ function run(cfg)
     -- v5.37: bawaan NYALA (dulu mati). Cadangannya lengkap -- lihat catatan
     -- di setup. Config lama yang shell_tetap=false tetep dihormatin.
     if cfg.shell_tetap == nil then cfg.shell_tetap = true end
-    cfg.autoexec_dir = cfg.autoexec_dir or "/sdcard/Delta/Autoexecute"
+    -- v5.x: cfg.autoexec_dir DIHAPUS. Worker gak nulis loader.
     cfg.poll_sec    = cfg.poll_sec or 5
     cfg.stagger_sec = cfg.stagger_sec or 15
     cfg.status_sec  = cfg.status_sec or 20
@@ -6982,7 +6841,9 @@ function run(cfg)
         end
     end
 
-    tulis_autoexec(cfg)   -- v4.8: pasang loader ke autoexec Delta
+    -- v5.x: tulis_autoexec() jadi stub (return true). Worker gak nulis loader.
+    -- Dipanggil tetep biar alur gak crash kalau nanti ada caller baru.
+    pcall(function() tulis_autoexec(cfg) end)
 
     -- v4.18: kunci orientasi (kalau diset) + keep-alive awal
     if cfg.orientasi == "landscape" or cfg.orientasi == "portrait" then
@@ -7241,16 +7102,9 @@ function run(cfg)
         local used, free, total = cacheRam[1], cacheRam[2], cacheRam[3]
         local cpu = cacheCpu
         -- header
-        -- v5.35: script yang aktif ikut ditampilin. Perlu karena satu tim GAG 2
-        -- bisa jalanin STAR FARM atau STAR SEED -- tanpa ini gak keliatan yang
-        -- mana, dan salah script itu gejalanya membingungkan (client jalan tapi
-        -- gak ngapa-ngapain).
-        local scLabel = cfg.script_label or ""
-        if scLabel == "" and (cfg.script_url or "") ~= "" then
-            scLabel = tostring(cfg.script_url):match("([^/]+)$") or ""
-        end
-        io.write(C.BOLD..C.G.."  VELIUM WORKER v"..VERSION.."  Â·  "..cfg.tim.."  Â·  "..(cfg.game_label or "")..C.N
-            ..(scLabel ~= "" and (C.D.."  Â·  "..C.C..scLabel..C.N) or "").."\n")
+        -- v5.x: script_label di header tabel DIHAPUS. Worker gak lagi nentuin
+        -- script Roblox (user yg urus). Tinggalkan header game_label aja.
+        io.write(C.BOLD..C.G.."  VELIUM WORKER v"..VERSION.."  Â·  "..cfg.tim.."  Â·  "..(cfg.game_label or "")..C.N.."\n")
         io.write(C.D.."  "..os.date("%H:%M:%S").."  Â·  perintah: "..(isi ~= "" and isi or "-").."\n"..C.N)
         io.write("\n")
         -- tabel
@@ -7325,9 +7179,8 @@ function run(cfg)
     local lastAutoRejoin = 0   -- v4.9: kapan terakhir cek auto-rejoin
     local lastKeepAlive = os.time()   -- v4.18: kapan terakhir apply keep-alive
     local psGantiKerjakan = 0   -- v4.51: psGanti terakhir yang UDAH dikerjain
-    -- v5.29: script per tim dari panel
-    local SCRIPT_KERJAKAN  = 0    -- scriptGanti terakhir yang udah dikerjain
-    local SCRIPT_URL_AKHIR = ""   -- url terakhir yang beneran ditulis ke autoexec
+    -- v5.x: script per tim dari panel DIHAPUS. SCRIPT_KERJAKAN/SCRIPT_URL_AKHIR
+    -- gak diperlukan lagi (worker gak urus script Roblox).
     local lastJagaDepan = 0     -- v4.52: kapan terakhir munculin ulang jendela
     local lastRekamDc = 0       -- v7.29: kapan terakhir rekam disconnect dari logcat
     local lastSuplaiCek = 0     -- v4.54: kapan terakhir minta CF ngerencanain suplai
@@ -10134,35 +9987,12 @@ function run(cfg)
 
 
         -- ============================================================
-        -- v5.29: SCRIPT PER TIM DARI PANEL.
-        -- Panel nentuin tim ini jalanin script apa; URL-nya nebeng di /perintah
-        -- (yang emang udah di-poll), jadi gak nambah request.
-        -- Ganti script = tulis ulang autoexec + REJOIN. Rejoin-nya WAJIB:
-        -- Delta cuma baca folder Autoexecute pas aplikasi masuk game, jadi
-        -- client yang lagi jalan bakal tetep pakai script lama sampai join ulang.
+        -- v5.x: SCRIPT PER TIM DARI PANEL -- DIHAPUS.
+        -- Worker gak lagi nulis loader script, gak lagi download script Roblox
+        -- dari URL panel, gak lagi menerima scriptGanti / scriptUrl / scriptNama.
+        -- Panel cuma boleh kirim command non-script (FORCE/REJOIN/STANDBY/CLOSE
+        -- /assignment/monitoring). Semua field script di response diabaikan.
         -- ============================================================
-        do
-            local scrUrl   = ambil_str(resp, "scriptUrl") or ""
-            local scrNama  = ambil_str(resp, "scriptNama") or ""
-            local scrGanti = tonumber((resp or ""):match('"scriptGanti"%s*:%s*(%d+)')) or 0
-            if scrUrl ~= "" and scrGanti > 0 and scrGanti ~= SCRIPT_KERJAKAN then
-                if scrUrl ~= SCRIPT_URL_AKHIR then
-                    tambahLog("PANEL: script diganti -> " .. (scrNama ~= "" and scrNama or scrUrl))
-                    if tulis_autoexec(cfg, scrUrl) then
-                        SCRIPT_URL_AKHIR = scrUrl
-                        -- Client yang lagi jalan masih megang script LAMA -- Delta
-                        -- cuma baca Autoexecute pas masuk game. Jadi ditutup;
-                        -- yang buka lagi biar blok FORCE di bawah (kalau STANDBY,
-                        -- ya emang sengaja gak dibuka).
-                        tambahLog("Tutup semua client -- script baru kepakai pas join ulang")
-                        close_all(cfg, nil, mapLink)
-                    else
-                        tambahLog("! gagal nulis autoexec buat script baru")
-                    end
-                end
-                SCRIPT_KERJAKAN = scrGanti
-            end
-        end
 
         -- v4.9: AUTO-REJOIN per client. cek tiap akun (dari mapping client<->akun)
         -- apakah masih lapor ke panel. akun yg keluar game -> script off -> berhenti
@@ -10951,14 +10781,10 @@ function jalankan_home(cfg, pkgMau)
 end
 
 PERINTAH = (arg and arg[1] or ""):lower()
--- v9.260: `velium seed/market/farm/gag1` = alias `velium pasang <preset>`. Biar bisa
--- ketik `velium market` (gak cuma `velium pasang market`). Pasang bakal generate command
--- pendek (`market`/`seed`/dll di PATH) via tulis_skrip_up -> abis itu ketik `market` doang jalan.
-if PERINTAH == "seed" or PERINTAH == "market" or PERINTAH == "farm" or PERINTAH == "gag1" then
-    if not arg then arg = {} end
-    arg[2] = PERINTAH   -- preset -> arg[2] (dibaca PRESET_ARG di handler pasang)
-    PERINTAH = "pasang"
-end
+-- v5.x: `velium seed/market/farm/gag1/hact/panen` alias DIHAPUS.
+-- Alias itu shortcut buat preset -- dan preset skrg cuma nentuin GAME, bukan
+-- script. Gak ada gunanya lagi punya pintasan `market`/`seed`/dll yg ngarah
+-- ke `velium pasang <game>`. User cukup ketik `velium pasang gag1` dll.
 
 -- v4.78: `velium key` -- salin link key-system Delta, terus jalanin ini.
 --   velium key                -> ambil link dari clipboard (termux-clipboard-get)
@@ -13599,7 +13425,7 @@ if PERINTAH == "pasang" then
 
         print()
         print(C.BOLD .. C.G .. "=== " .. cfgOto.tim .. " SIAP JALAN ===" .. C.N)
-        info(cfgOto.game_label .. "  Â·  " .. cfgOto.script_label)
+        info(cfgOto.game_label)
         print()
     end
 
@@ -16339,71 +16165,13 @@ if PERINTAH == "panel" or PERINTAH == "uji" then
 end
 
 -- ============================================================
--- v5.35: `velium script` -- ganti script autoexec tanpa setup ulang.
--- Tanpa ini, mau tuker STAR FARM <-> STAR SEED harus ngulang setup dari nol
--- (nomor tim, game, scan paket, dst) -- padahal yang mau diubah satu baris.
+-- v5.x: `velium script` / `velium script <preset>` DIHAPUS.
+--
+-- Worker gak lagi urus script Roblox. Perintah ini dulunya nulis ulang
+-- velium_loader.txt ke /sdcard/Delta/Autoexecute (sumber loadstring(...))
+-- + set cfg.script_url / script_label. Semua mekanisme itu udah dimatiin.
+-- User yg handle script sendiri.
 -- ============================================================
-if PERINTAH == "script" or PERINTAH == "sc" then
-    local cfg = load_config()
-    if not cfg then err("Config belum ada. Jalanin setup dulu."); return end
-
-    local GH = "https://raw.githubusercontent.com/alzafabocahbocah-boop/ronihub/main/"
-    local PILIHAN = {
-        { "STAR FARM", "gag2",   "farm kebun: tanam, collect, jual" },
-        { "STAR SEED", "seed",   "AFK beli seed + gear + pet, terima gift" },
-        { "MARKET",    "market", "akun market / TradeWorld" },
-    }
-
-    print(C.BOLD .. C.C .. "\n=== GANTI SCRIPT AUTOEXEC ===\n" .. C.N)
-    info("tim      : " .. tostring(cfg.tim))
-    info("game     : " .. tostring(cfg.game_label or "-"))
-    info("sekarang : " .. tostring(cfg.script_label or "-") ..
-         "  (" .. tostring(cfg.script_url or "-") .. ")")
-    print("")
-
-    -- boleh langsung: velium script seed
-    local minta = (arg[2] or ""):lower()
-    local sc
-    if minta ~= "" then
-        for _, x in ipairs(PILIHAN) do
-            if minta == x[2] or minta == x[1]:lower():gsub("%s", "")
-               or minta == x[1]:lower() then sc = x break end
-        end
-        if not sc then
-            err("'" .. minta .. "' gak dikenal. Pilihannya: gag2 / seed / market")
-            return
-        end
-    else
-        for i, x in ipairs(PILIHAN) do
-            print(C.D .. string.format("  %d) %-10s -> %-7s  %s", i, x[1], x[2], x[3]) .. C.N)
-        end
-        print("")
-        local ps = ask("Pilih (1/2/3, Enter=batal)", "")
-        if ps == "" then info("Dibatalin."); return end
-        sc = PILIHAN[tonumber(ps) or 0]
-        if not sc then err("Pilihan gak ada."); return end
-    end
-
-    if cfg.script_url == (GH .. sc[2]) then
-        info("Udah pakai " .. sc[1] .. " -- gak ada yang diubah.")
-        return
-    end
-
-    cfg.script_url = GH .. sc[2]
-    cfg.script_label = sc[1]
-    save_config(cfg)
-    ok("Config disimpen: " .. sc[1] .. " -> " .. cfg.script_url)
-
-    -- tulis ulang autoexec biar langsung kepakai
-    if tulis_autoexec(cfg) then
-        print("")
-        warn("Client yang LAGI JALAN masih pakai script LAMA.")
-        warn("Delta cuma baca autoexec pas masuk game -- jadi harus join ulang:")
-        info("  panel -> tim ini -> Rejoin   (atau: velium stop terus jalanin lagi)")
-    end
-    print("")
-    return
-end
 
 -- ============================================================
 -- v5.53: `velium layar <client>` -- CARI SINYAL "di Home vs di game".
@@ -16626,8 +16394,6 @@ if PERINTAH ~= "" then
     info("   velium cookie all         -> ekstrak dari semua paket kepasang")
     info("   velium verif              -> daftar client yang butuh dicek manual (nyangkut/verif bot)")
     info("   velium panel              -> UJI sambungan ke panel (kalau tim kosong di panel)")
-    info("   velium script             -> ganti script autoexec (STAR FARM / STAR SEED / MARKET)")
-    info("   velium script seed        -> langsung ke STAR SEED, tanpa nanya")
     info("   velium layar [client]     -> dump sinyal layar (buat bedain Home vs di game)")
     print()
     info("Kalau perintahnya harusnya ada, versi di RF ini ketinggalan -- tarik ulang:")
