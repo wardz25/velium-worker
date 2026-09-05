@@ -2549,15 +2549,16 @@ end
 -- ============================================================
 -- BANNER STARTUP "VELIUM PANEL" (kuning, ASCII only, sekali pas nyala).
 -- Render FIGlet LIVE (VELIUM/PANEL ditumpuk biar muat layar HP). Urutan
--- font (yg pertama keluar dipakai buat dua kata): banner3-D (chunky pixel,
--- paling mirip referensi) -> banner3 -> block (clean) -> bawaan figlet.
--- SATU warna (\27[1;33m kuning terang), reset tiap baris. Semua font ASCII
--- murni -> gak mojibake di Termux. Figlet GAK ADA -> teks polos tengah.
--- Gak pernah error, gak kepotong.
--- BUTUH (sekali): `pkg install figlet` -- pasang otomatis buat RF baru.
--- Dipanggil sekali via pcall di run() -> banner GAK BISA gagalkan start.
+-- font (yg pertama keluar dipakai buat dua kata): ansi_shadow (blok 3D kayak
+-- pic referensi) -> banner3-D (chunky pixel) -> banner3 -> block (clean) ->
+-- bawaan figlet. Centering DIKERJAIN FIGLET (`-c -w`, akurat termasuk buat
+-- huruf blok multibyte yg lebar-layarnya beda dari panjang-byte). SATU warna
+-- (\27[1;33m kuning terang), reset tiap baris.
+-- Figlet GAK ADA -> teks polos tengah. Gak pernah error, gak kepotong.
+-- BUTUH (sekali): `pkg install figlet` + font ansi_shadow.flf (pasang otomatis
+-- buat RF baru). Dipanggil sekali via pcall di run() -> GAK BISA gagalkan start.
 -- ============================================================
-BANNER_FONTS = {"banner3-D", "banner3", "block"}
+BANNER_FONTS = {"ansi_shadow", "banner3-D", "banner3", "block"}
 function banner_velium()
     local Y, N = "\27[1;33m", "\27[0m"
     -- lebar terminal: $COLUMNS dulu, baru stty, mentok 80. Dibatasi 200
@@ -2572,10 +2573,11 @@ function banner_velium()
     end
     if w <= 0 then w = 80 end
     if w > 200 then w = 200 end
-    -- ambil 1 kata dari figlet. Balikin tabel baris, atau nil kalau figlet
-    -- gak ada / font gak dikenal (keluaran kosong).
+    -- ambil 1 kata dari figlet, centering DIKERJAIN FIGLET (-c -w) biar
+    -- akurat juga buat huruf blok multibyte. Balikin tabel baris, atau nil
+    -- kalau figlet gak ada / font gak dikenal (keluaran kosong).
     local function ambil(kata, font)
-        local cmd = "figlet -w 200 " .. (font and ("-f " .. font .. " ") or "")
+        local cmd = "figlet -c -w " .. w .. " " .. (font and ("-f " .. font .. " ") or "")
                     .. kata .. " 2>/dev/null"
         local h = io.popen(cmd)
         if not h then return nil end
@@ -2603,12 +2605,17 @@ function banner_velium()
             for _, line in ipairs(a2) do art[#art + 1] = line end
         end
     end
-    -- ukur lebar blok (tanpa spasi ekor)
+    -- ukur lebar LAYAR blok (codepoint, bukan byte -- huruf blok 1 char
+    -- bisa 3 byte; #line ngaco buat itu). Tanpa spasi ekor.
+    local function lebar(s)
+        return #(s:gsub("[\128-\191]", ""))
+    end
     local full = 0
     if art then
         for i, line in ipairs(art) do
             art[i] = line:gsub("%s+$", "")
-            if #art[i] > full then full = #art[i] end
+            local lw = lebar(art[i])
+            if lw > full then full = lw end
         end
     end
     -- figlet gak ada / sempit -> teks polos tengah (tetap kuning, gak kepotong)
@@ -2619,15 +2626,13 @@ function banner_velium()
         io.flush()
         return
     end
-    -- blok dirata: semua baris mulai di kolom yg sama, bloknya di-tengah
+    -- leading space = centering FIGLET, JANGAN digeser/ditambah. Cuma warnain.
     io.write("\n")
     for _, line in ipairs(art) do
         if line == "" then
             io.write("\n")   -- baris kosong: tanpa spasi ekor
         else
-            local pad = math.max(0, math.floor((w - full) / 2))
-            io.write(Y .. string.rep(" ", pad) .. line
-                     .. string.rep(" ", full - #line) .. N .. "\n")
+            io.write(Y .. line .. N .. "\n")
         end
     end
     io.write("\n")
@@ -13294,6 +13299,26 @@ if PERINTAH == "pasang" then
     else warn("termux-api gak ada -- `velium key` gak bisa ambil link dari papan klip") end
     if ada_perintah("figlet") then ok("figlet siap (banner startup)")
     else warn("figlet gak ada -- banner pakai teks polos (pasang: pkg install figlet)") end
+    -- font ANSI Shadow (gaya pic referensi) belum tentu kebawa paket figlet.
+    -- Unduh sekali ke folder font figlet (root), terus verifikasi beneran kepakai.
+    if ada_perintah("figlet") then
+        local fdir = (baca("figlet -I2"):gsub("%s+", ""))
+        if fdir ~= "" then
+            local ada = baca('ls "' .. fdir .. '/ansi_shadow.flf"'):match("%S")
+            if not ada then
+                info("Unduh font ANSI Shadow buat banner...")
+                jalan("curl -fsSL --max-time 60 'https://raw.githubusercontent.com/xero/figlet-fonts/master/ANSI%20Shadow.flf'" ..
+                      " -o " .. RUMAH .. "/ansi_shadow.flf 2>/dev/null")
+                jalan("su -c 'cp " .. RUMAH .. "/ansi_shadow.flf " .. fdir ..
+                      "/ansi_shadow.flf && chmod 644 " .. fdir .. "/ansi_shadow.flf' >/dev/null 2>&1")
+            end
+            if baca("figlet -f ansi_shadow VELIUM"):match("%S") then
+                ok("font ANSI Shadow siap")
+            else
+                warn("font ANSI Shadow gak kepasang -- banner pakai font cadangan")
+            end
+        end
+    end
     if ada_perintah("python") then ok("python siap")
     else warn("python gak ada -- lewati yg butuh python") end
     if ada_perintah("toilet") then ok("toilet siap")
