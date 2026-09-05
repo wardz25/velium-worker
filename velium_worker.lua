@@ -2544,6 +2544,7 @@ end
 
 -- v9.76: banner header COKLAT KARAMEL (versi + device + id device). border kotak rapi.
 -- (banner_karamel DIHAPUS -- box-drawing mojibake di Termux; banner_velium yg kepakai)
+-- Info versi+device+id balik sebagai 1 baris ASCII via banner_info() di bawah.
 
 -- ============================================================
 -- BANNER STARTUP "VELIUM PANEL" (kuning, ASCII only, sekali pas nyala).
@@ -2631,6 +2632,16 @@ function banner_velium()
     end
     io.write("\n")
     io.flush()
+end
+
+-- Info versi + device + id (ASCII only, 1 baris, di bawah banner).
+-- Pengganti kotak karamel yg mojibake. Pakai info() biar gaya konsisten
+-- sama log worker. Global biar gak makan slot batas-200.
+function banner_info()
+    local ver = "v" .. VERSION
+    local dnama = devnama_now() or "?"
+    local did = dev_id() or "?"
+    info(ver .. " | " .. dnama .. " | " .. did)
 end
 
 -- ============================================================
@@ -6763,6 +6774,7 @@ function run(cfg)
     local list = split(cfg.pkgs)
     print(C.BOLD..C.G.."\n"..C.N)
     pcall(banner_velium)   -- sekali pas nyala (kuning, ASCII only, gak bisa gagalkan start)
+    pcall(banner_info)     -- versi + device + id, 1 baris ASCII di bawah banner
     info("Tim   : "..cfg.tim.." ("..#list.." client)")
     -- v8.31: DETEKSI VERSI BARU + auto-restart client DIBUANG (v8.26). User: auto-
     -- update bikin error -- OUT semua client + buka ulang malah kacau (1/10 tiba2
