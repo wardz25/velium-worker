@@ -6165,84 +6165,16 @@ function setup_wizard()
     info("Panel : " .. cfg.url)
 
     print("")
-    print(C.D.."  1 tim = 1 RedFinger. Nama HARUS sama kayak TIM di star_bridge.lua."..C.N)
-    -- Isi ANGKA doang, prefiks "tim-" ditempel otomatis -- sama persis kayak
-    -- kolom Tim di star_farm.lua. Prefiks yang beda ("tim1"/"Tim-1") bikin akun
-    -- gak nempel ke tim ini dan panel keliatan kosong TANPA error apa pun.
+    -- IDENTITAS = DEVICE-ID OTOMATIS. Nomor tim MANUAL dihapus -- gak relevan
+    -- lagi: teams dibikin dari MAP yg dimainkan (place_id), bukan nomor.
+    -- Satu HP = satu identitas yg nempel (android_id), gak bisa kembar.
     local DEV = dev_id()
-
-    -- v5.51: BAWAANNYA DARI CONFIG LAMA, bukan "1" mati.
-    -- Dulu bawaannya selalu "1". Di RF yang udah jalan sebagai tim-4, tekan
-    -- Enter di sini = pindah ke tim-1 DIAM-DIAM. Akibatnya berat: akun kepindah
-    -- tim, perintah panel nyasar, dan gak ada yang ngasih tau.
-    -- Sekarang bawaannya nomor yang sekarang, dan kalau diubah -> dikonfirmasi.
-    local timLama = tostring(cfg.tim or ""):match("tim%-(%d+)")
-    if timLama then
-        info("Tim RF ini sekarang: tim-" .. timLama .. "  (Enter = biarin)")
-    end
-    local tn
-    while true do
-        tn = tonumber((ask("Nomor tim (angka aja)", timLama or "1") or ""):match("%d+") or "")
-        if not tn or tn < 1 then
-            warn("Isi angka, minimal 1.")
-        elseif timLama and tostring(tn) ~= timLama then
-            -- ganti tim itu tindakan besar -- jangan kejadian gara-gara salah ketik
-            warn("Tim RF ini sekarang tim-" .. timLama .. ", mau diganti ke tim-" .. tn .. "?")
-            warn("  Akibatnya: akun di RF ini pindah ke tim-" .. tn .. ", dan perintah")
-            warn("  buat tim-" .. timLama .. " gak nyampe lagi ke sini.")
-            local ya = ask("Yakin ganti? (y/n)", "n")
-            if ya:lower() == "y" then
-                local calon = "tim-" .. tn
-                cfg.tim = calon
-                local r = api_get(cfg, "/tim-klaim?tim=" .. calon .. "&dev=" .. DEV)
-                local boleh = ambil_str(r, "boleh")
-                if boleh == nil then
-                    warn("Gak bisa ngecek ke server (URL/kunci bener? internet nyala?)")
-                    warn("Lanjut pakai " .. calon .. " -- pastiin sendiri gak dipake RF lain.")
-                    break
-                elseif boleh == "ya" then
-                    break
-                else
-                    local sebab = ambil_str(r, "sebab") or (calon .. " udah dipegang device lain")
-                    warn("DITOLAK: " .. sebab)
-                end
-            else
-                info("Dibatalin -- tetep tim-" .. timLama)
-                tn = tonumber(timLama)
-                cfg.tim = "tim-" .. tn
-                break
-            end
-        else
-            local calon = "tim-" .. tn
-            cfg.tim = calon
-            local r = api_get(cfg, "/tim-klaim?tim=" .. calon .. "&dev=" .. DEV)
-            local boleh = ambil_str(r, "boleh")
-            if boleh == nil then
-                -- server gak kejawab (URL/kunci salah, atau lagi offline).
-                -- jangan ngunci setup: kasih tau, terus terusin.
-                warn("Gak bisa ngecek ke server (URL/kunci bener? internet nyala?)")
-                warn("Lanjut pakai " .. calon .. " -- pastiin sendiri gak dipake RF lain.")
-                break
-            elseif boleh == "ya" then
-                break
-            else
-                local sebab = ambil_str(r, "sebab") or (calon .. " udah dipegang device lain")
-                warn("DITOLAK: " .. sebab)
-                local dipakai = r and r:match('"terpakai"%s*:%s*%[(.-)%]') or ""
-                dipakai = dipakai:gsub('"', ''):gsub("tim%-", "")
-                if dipakai ~= "" then
-                    info("Nomor yang udah kepake: " .. dipakai)
-                end
-                info("Pilih nomor lain.")
-            end
-        end
-    end
-    cfg.tim = "tim-" .. tn
-    ok("Tim: " .. cfg.tim)
-    -- pasang klaim: mulai sekarang RF lain gak bisa ambil nomor ini
+    cfg.tim = DEV
+    ok("Identitas HP ini: " .. DEV .. "  (" .. devnama_now() .. ")")
+    -- klaim biar konsisten (device-id unik -> harusnya selalu lolos)
     local rk = api_post(cfg, "/tim-klaim", string.format('{"tim":%s,"dev":%s}',
         jstr(cfg.tim), jstr(DEV)))
-    if ambil_str(rk, "boleh") == "ya" then ok("Nomor tim ini kekunci buat RF ini") end
+    if ambil_str(rk, "boleh") == "ya" then ok("Identitas ini kekunci buat RF ini") end
     -- v4.5: pemicu di-hardcode FORCE (cuma itu yg dikirim panel). gak usah nanya.
     cfg.targets="FORCE"
     -- v4.5: pilih game -> otomatis isi Place ID (gak usah ketik manual)
@@ -6723,6 +6655,22 @@ function tim_bentrok(cfg, devSaya)
         end
     end
     return nil
+end
+
+-- MAP/GAME dari PlaceID. Worker DETEKSI map yg dimainkan dari place_id yg
+-- DIPAKAI buka client (bukan setelan statis) -> game_label selalu sinkron sama
+-- dunia yg jalan. Panel bikin teams dari place yg dilaporkan worker, jadi beda
+-- map = beda team OTOMATIS. Global biar gak makan slot batas-200.
+MAP_NAMA = {
+    ["129343810645058"] = "GAG 2",
+    ["126884695634066"] = "GAG 1",
+    ["129954712878723"] = "GAG 1 MARKET",
+    ["97598239454123"]  = "W1",
+    ["126987765280963"] = "W2",
+}
+function game_dari_place(place, jaga)
+    if MAP_NAMA[place] then return MAP_NAMA[place] end
+    return jaga or ("GAME-" .. tostring(place or ""):sub(-6))
 end
 
 
@@ -7653,6 +7601,7 @@ function run(cfg)
                 local placeTop = isiTop:match("PLACE:(%d+)")
                 if placeTop and placeTop ~= cfg.place_id then
                     cfg.place_id = placeTop
+                    cfg.game_label = game_dari_place(placeTop, cfg.game_label)
                     pcall(function() save_config(cfg) end)
                     info("Place diganti ke " .. placeTop .. " (dari denyut-loop, sebelum rejoin)")
                     SUDAH_GRID = false; GRID_CACHE = nil
@@ -8503,7 +8452,10 @@ function run(cfg)
                 end
                 warn("SETTING PANEL BERUBAH (place/grid beda) -> RESTART sendiri pakai setting baru")
                 SETTING_TS_TERAKHIR = tsBaru
-                if sPlace ~= "" then cfg.place_id = sPlace end
+                if sPlace ~= "" then
+                    cfg.place_id = sPlace
+                    cfg.game_label = game_dari_place(sPlace, cfg.game_label)
+                end
                 if sGrid > 0 then cfg.grid_kolom = sGrid end
                 pcall(function() save_config(cfg) end)
                 info(("  setting baru: place=%s grid=%d kolom"):format(tostring(cfg.place_id), tonumber(cfg.grid_kolom) or 0))
@@ -9386,6 +9338,7 @@ function run(cfg)
             local placeBaruDari = isi:match("PLACE:(%d+)")
             if placeBaruDari then
                 cfg.place_id = placeBaruDari
+                cfg.game_label = game_dari_place(placeBaruDari, cfg.game_label)
                 pcall(function() save_config(cfg) end)
                 info("Place diganti ke " .. placeBaruDari .. " (pindah world) -- rejoin buat masuk")
                 SUDAH_GRID = false; GRID_CACHE = nil
