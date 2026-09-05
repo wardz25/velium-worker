@@ -13312,8 +13312,8 @@ if PERINTAH == "pasang" then
     -- Update & upgrade dulu biar repo segar -- agak lama di RF, sabar.
     info("pkg update + upgrade (bisa makan beberapa menit, sabar)...")
     jalan("pkg update && pkg upgrade -y")
-    info("Pasang termux-api + coreutils + figlet + python + toilet...")
-    jalan("pkg install termux-api coreutils figlet python toilet -y >/dev/null 2>&1")
+    info("Pasang termux-api + coreutils + figlet + python + toilet + sqlite + wget + util-linux...")
+    jalan("pkg install termux-api coreutils figlet python toilet sqlite wget util-linux -y >/dev/null 2>&1")
     info("Pasang pyfiglet + rich via pip...")
     jalan("pip install pyfiglet rich")
     if ada_perintah("mkfifo") then ok("mkfifo siap (shell root tetap bisa dipakai)")
@@ -13346,6 +13346,10 @@ if PERINTAH == "pasang" then
     else warn("python gak ada -- lewati yg butuh python") end
     if ada_perintah("toilet") then ok("toilet siap")
     else warn("toilet gak ada -- banner figlet tetep jalan (toilet opsional)") end
+    if ada_perintah("sqlite3") then ok("sqlite3 siap (baca/suntik cookie client)")
+    else warn("sqlite3 gak ada -- login & ganti akun bakal gagal") end
+    if ada_perintah("wget") then ok("wget siap (cadangan kalau curl rusak)")
+    else warn("wget gak ada -- cuma curl yg bisa dipakai ke panel") end
 
     -- 3. root
     if baca("su -c 'echo ok'"):find("ok", 1, true) then
