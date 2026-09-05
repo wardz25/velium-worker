@@ -2572,33 +2572,14 @@ end
 
 -- ============================================================
 -- BANNER STARTUP "VELIUM PANEL" (kuning, ASCII only, sekali pas nyala).
--- Seni FIGlet 3-d DI-BAKE (bukan render runtime) -> pixel-identik di semua
--- HP, NOL dependency (gak butuh paket figlet). SATU warna (\27[1;33m kuning
--- terang), reset (\27[0m) tiap baris. ASCII murni (*, /, spasi) biar gak
--- mojibake kayak box-drawing di Termux. Lebar terminal dari $COLUMNS / stty;
--- kalau sempit -> teks polos tengah (gak pernah error, gak kepotong).
--- Global (bukan local) biar gak makan slot batas-200 main chunk.
+-- Render FIGlet LIVE (`figlet -f 3-d`, VELIUM/PANEL ditumpuk biar muat layar
+-- HP). SATU warna (\27[1;33m kuning terang), reset tiap baris. Font 3-d
+-- ASCII murni -> gak mojibake di Termux. Font 3-d gak dikenal -> font bawaan
+-- figlet; figlet GAK ADA -> teks polos tengah. Gak pernah error, gak kepotong.
+-- BUTUH (sekali): `pkg install figlet` -- pasang otomatis buat RF baru.
 -- Dipanggil sekali via pcall di run() -> banner GAK BISA gagalkan start.
 -- ============================================================
-BANNER_ART = {
-" **      ** ******** **       ** **     ** ****     ****",
-"/**     /**/**///// /**      /**/**    /**/**/**   **/**",
-"/**     /**/**      /**      /**/**    /**/**//** ** /**",
-"//**    ** /******* /**      /**/**    /**/** //***  /**",
-" //**  **  /**////  /**      /**/**    /**/**  //*   /**",
-"  //****   /**      /**      /**/**    /**/**   /    /**",
-"   //**    /********/********/**//******* /**        /**",
-"    //     //////// //////// //  ///////  //         //",
-"",
-" *******      **     ****     ** ******** **",
-"/**////**    ****   /**/**   /**/**///// /**",
-"/**   /**   **//**  /**//**  /**/**      /**",
-"/*******   **  //** /** //** /**/******* /**",
-"/**////   **********/**  //**/**/**////  /**",
-"/**      /**//////**/**   //****/**      /**",
-"/**      /**     /**/**    //***/********/********",
-"//       //      // //      /// //////// ////////",
-}
+BANNER_FONTFIG = "3-d"
 function banner_velium()
     local Y, N = "\27[1;33m", "\27[0m"
     -- lebar terminal: $COLUMNS dulu, baru stty, mentok 80. Dibatasi 200
@@ -2613,30 +2594,58 @@ function banner_velium()
     end
     if w <= 0 then w = 80 end
     if w > 200 then w = 200 end
+    -- ambil 1 kata dari figlet. Balikin tabel baris, atau nil kalau figlet
+    -- gak ada / font gak dikenal (keluaran kosong).
+    local function ambil(kata, font)
+        local cmd = "figlet -w 200 " .. (font and ("-f " .. font .. " ") or "")
+                    .. kata .. " 2>/dev/null"
+        local h = io.popen(cmd)
+        if not h then return nil end
+        local o = h:read("*all") or ""
+        h:close()
+        if not o:match("%S") then return nil end
+        local t = {}
+        for line in (o .. "\n"):gmatch("(.-)\n") do t[#t + 1] = line end
+        return t
+    end
+    -- font yg kepakai: 3-d dulu, kalau gak dikenal -> bawaan figlet
+    local a1 = ambil("VELIUM", BANNER_FONTFIG)
+    local fontPakai = BANNER_FONTFIG
+    if not a1 then a1, fontPakai = ambil("VELIUM", nil), nil end
+    local art = nil
+    if a1 then
+        local a2 = ambil("PANEL", fontPakai)
+        if a2 then
+            art = a1
+            art[#art + 1] = ""
+            for _, line in ipairs(a2) do art[#art + 1] = line end
+        end
+    end
     -- ukur lebar blok (tanpa spasi ekor)
     local full = 0
-    for _, line in ipairs(BANNER_ART) do
-        local bersih = line:gsub("%s+$", "")
-        if #bersih > full then full = #bersih end
+    if art then
+        for i, line in ipairs(art) do
+            art[i] = line:gsub("%s+$", "")
+            if #art[i] > full then full = #art[i] end
+        end
     end
-    -- sempit -> teks polos tengah (tetap kuning, tetap tengah, gak kepotong)
-    if full == 0 or full > w then
-        local teks, pad = "VELIUM PANEL", 0
-        pad = math.max(0, math.floor((w - #teks) / 2))
+    -- figlet gak ada / sempit -> teks polos tengah (tetap kuning, gak kepotong)
+    if not art or full == 0 or full > w then
+        local teks = "VELIUM PANEL"
+        local pad = math.max(0, math.floor((w - #teks) / 2))
         io.write("\n" .. Y .. string.rep(" ", pad) .. teks .. N .. "\n\n")
         io.flush()
         return
     end
     -- blok dirata: semua baris mulai di kolom yg sama, bloknya di-tengah
     io.write("\n")
-    for _, line in ipairs(BANNER_ART) do
-        local bersih = line:gsub("%s+$", "")
-        if bersih == "" then
+    for _, line in ipairs(art) do
+        if line == "" then
             io.write("\n")   -- baris kosong: tanpa spasi ekor
         else
             local pad = math.max(0, math.floor((w - full) / 2))
-            io.write(Y .. string.rep(" ", pad) .. bersih
-                     .. string.rep(" ", full - #bersih) .. N .. "\n")
+            io.write(Y .. string.rep(" ", pad) .. line
+                     .. string.rep(" ", full - #line) .. N .. "\n")
         end
     end
     io.write("\n")
@@ -13288,12 +13297,14 @@ if PERINTAH == "pasang" then
     else warn("Izin penyimpanan belum -- autoexec mungkin gagal") end
 
     -- 2. paket sisanya (lua & curl udah ada, kan dipakai buat nyampe sini)
-    info("Pasang termux-api + coreutils (agak lama di RF, sabar)")
-    jalan("pkg install termux-api coreutils -y >/dev/null 2>&1")
+    info("Pasang termux-api + coreutils + figlet (agak lama di RF, sabar)")
+    jalan("pkg install termux-api coreutils figlet -y >/dev/null 2>&1")
     if ada_perintah("mkfifo") then ok("mkfifo siap (shell root tetap bisa dipakai)")
     else warn("mkfifo gak ada -- shell root tetap bakal balik ke cara lama") end
     if ada_perintah("termux-clipboard-get") then ok("termux-api siap (papan klip kebaca)")
     else warn("termux-api gak ada -- `velium key` gak bisa ambil link dari papan klip") end
+    if ada_perintah("figlet") then ok("figlet siap (banner startup)")
+    else warn("figlet gak ada -- banner pakai teks polos (pasang: pkg install figlet)") end
 
     -- 3. root
     if baca("su -c 'echo ok'"):find("ok", 1, true) then
