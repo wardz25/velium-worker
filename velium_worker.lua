@@ -2642,11 +2642,12 @@ function banner_velium()
     if not art or full == 0 or full > w then
         local teks = "VELIUM PANEL"
         local pad = math.max(0, math.floor((w - #teks) / 2))
-        io.write("\n" .. Y .. string.rep(" ", pad) .. teks .. N .. "\n\n")
+        io.write("\n" .. Y .. string.rep(" ", pad) .. teks .. N .. "\n")
         io.flush()
         return
     end
     -- leading space = centering FIGLET, JANGAN digeser/ditambah. Cuma warnain.
+    -- TANPA baris kosong di ujung: banner_info nyambung langsung di bawah.
     io.write("\n")
     for _, line in ipairs(art) do
         if line == "" then
@@ -2655,7 +2656,6 @@ function banner_velium()
             io.write(Y .. line .. N .. "\n")
         end
     end
-    io.write("\n")
     io.flush()
 end
 
@@ -2667,6 +2667,8 @@ function banner_info()
     local w = lebar_terminal()
     local pad = math.max(0, math.floor((w - #teks) / 2))
     io.write(C.C .. string.rep(" ", pad) .. teks .. C.N .. "\n")
+    -- kotak pemisah ASCII antara BANNER dan LOGS (full-width, abu redup)
+    io.write(C.D .. string.rep("=", w) .. C.N .. "\n")
     io.flush()
 end
 
