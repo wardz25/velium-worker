@@ -2571,6 +2571,71 @@ function banner_karamel()
 end
 
 -- ============================================================
+-- BANNER STARTUP "VELIUM PANEL" (kuning, ASCII only, sekali pas nyala).
+-- FIGlet-style blocky 5 baris, SATU warna (\27[1;33m kuning terang),
+-- reset (\27[0m) tiap baris. ASCII murni (# + spasi) biar gak mojibake
+-- kayak box-drawing di Termux. Lebar terminal dari $COLUMNS / stty;
+-- kalau sempit -> teks polos tengah (gak pernah error, gak kepotong).
+-- Global (bukan local) biar gak makan slot batas-200 main chunk.
+-- Dipanggil sekali via pcall di run() -> banner GAK BISA gagalkan start.
+-- ============================================================
+BANNER_FONT = {
+    V = {"#   #","#   #","#   #","#   #"," ### "},
+    E = {"#####","#    ","#### ","#    ","#####"},
+    L = {"#    ","#    ","#    ","#    ","#####"},
+    I = {"#####","  #  ","  #  ","  #  ","#####"},
+    U = {"#   #","#   #","#   #","#   #","#####"},
+    M = {"#   #","## ##","# # #","#   #","#   #"},
+    P = {"#### ","#   #","#### ","#    ","#    "},
+    A = {" ### ","#   #","#####","#   #","#   #"},
+    N = {"#   #","##  #","# # #","#  ##","#   #"},
+    [" "] = {"   ","   ","   ","   ","   "},
+}
+function banner_velium()
+    local teks = "VELIUM PANEL"
+    local Y, N = "\27[1;33m", "\27[0m"
+    -- lebar terminal: $COLUMNS dulu, baru stty, mentok 80. Dibatasi 200
+    -- biar string.rep gak bisa makan memori kalau nilainya ngaco.
+    local w = tonumber(os.getenv("COLUMNS")) or 0
+    if w <= 0 then
+        local h = io.popen("stty size 2>/dev/null")
+        if h then
+            w = tonumber((h:read("*all") or ""):match("%d+%s+(%d+)")) or 0
+            h:close()
+        end
+    end
+    if w <= 0 then w = 80 end
+    if w > 200 then w = 200 end
+    -- susun 5 baris + ukur lebar aslinya
+    local rows, full = {"","","","",""}, 0
+    for i = 1, #teks do
+        local g = BANNER_FONT[teks:sub(i, i)] or BANNER_FONT[" "]
+        for r = 1, 5 do rows[r] = rows[r] .. g[r] .. " " end
+    end
+    for r = 1, 5 do
+        rows[r] = rows[r]:gsub("%s+$", "")
+        if #rows[r] > full then full = #rows[r] end
+    end
+    -- sempit -> teks polos tengah (tetap kuning, tetap tengah, gak kepotong)
+    if full == 0 or full > w then
+        local pad = math.max(0, math.floor((w - #teks) / 2))
+        io.write("\n" .. Y .. string.rep(" ", pad) .. teks .. N .. "\n\n")
+        io.flush()
+        return
+    end
+    io.write("\n")
+    for r = 1, 5 do
+        -- blok dirata: semua baris mulai di kolom yg sama (rata kiri blok),
+        -- bloknya yg di-tengah. Biar sisi kiri tegak lurus.
+        local pad = math.max(0, math.floor((w - full) / 2))
+        io.write(Y .. string.rep(" ", pad) .. rows[r]
+                 .. string.rep(" ", full - #rows[r]) .. N .. "\n")
+    end
+    io.write("\n")
+    io.flush()
+end
+
+-- ============================================================
 -- v4.17: konfirmasi BENERAN di game lewat bridge (/stat)
 -- Home Roblox = ActivityNativeMain JUGA -> pkg_running gak bisa bedain Home
 -- vs in-game. Yg beneran nandain di dalam game + script jalan = akun LAPOR
@@ -6699,6 +6764,7 @@ function run(cfg)
 
     local list = split(cfg.pkgs)
     print(C.BOLD..C.G.."\n"..C.N)
+    pcall(banner_velium)   -- sekali pas nyala (kuning, ASCII only, gak bisa gagalkan start)
     banner_karamel()
     info("Tim   : "..cfg.tim.." ("..#list.." client)")
     -- v8.31: DETEKSI VERSI BARU + auto-restart client DIBUANG (v8.26). User: auto-
