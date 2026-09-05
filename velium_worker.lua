@@ -13280,15 +13280,24 @@ if PERINTAH == "pasang" then
     if baca("ls -d " .. RUMAH .. "/storage"):match("%S") then ok("Izin penyimpanan ada")
     else warn("Izin penyimpanan belum -- autoexec mungkin gagal") end
 
-    -- 2. paket sisanya (lua & curl udah ada, kan dipakai buat nyampe sini)
-    info("Pasang termux-api + coreutils + figlet (agak lama di RF, sabar)")
-    jalan("pkg install termux-api coreutils figlet -y >/dev/null 2>&1")
+    -- 2. sistem + paket (lua & curl udah ada, kan dipakai buat nyampe sini).
+    -- Update & upgrade dulu biar repo segar -- agak lama di RF, sabar.
+    info("pkg update + upgrade (bisa makan beberapa menit, sabar)...")
+    jalan("pkg update && pkg upgrade -y")
+    info("Pasang termux-api + coreutils + figlet + python + toilet...")
+    jalan("pkg install termux-api coreutils figlet python toilet -y >/dev/null 2>&1")
+    info("Pasang pyfiglet + rich via pip...")
+    jalan("pip install pyfiglet rich")
     if ada_perintah("mkfifo") then ok("mkfifo siap (shell root tetap bisa dipakai)")
     else warn("mkfifo gak ada -- shell root tetap bakal balik ke cara lama") end
     if ada_perintah("termux-clipboard-get") then ok("termux-api siap (papan klip kebaca)")
     else warn("termux-api gak ada -- `velium key` gak bisa ambil link dari papan klip") end
     if ada_perintah("figlet") then ok("figlet siap (banner startup)")
     else warn("figlet gak ada -- banner pakai teks polos (pasang: pkg install figlet)") end
+    if ada_perintah("python") then ok("python siap")
+    else warn("python gak ada -- lewati yg butuh python") end
+    if ada_perintah("toilet") then ok("toilet siap")
+    else warn("toilet gak ada -- banner figlet tetep jalan (toilet opsional)") end
 
     -- 3. root
     if baca("su -c 'echo ok'"):find("ok", 1, true) then
