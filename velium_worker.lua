@@ -2547,14 +2547,16 @@ end
 
 -- ============================================================
 -- BANNER STARTUP "VELIUM PANEL" (kuning, ASCII only, sekali pas nyala).
--- Render FIGlet LIVE (`figlet -f 3-d`, VELIUM/PANEL ditumpuk biar muat layar
--- HP). SATU warna (\27[1;33m kuning terang), reset tiap baris. Font 3-d
--- ASCII murni -> gak mojibake di Termux. Font 3-d gak dikenal -> font bawaan
--- figlet; figlet GAK ADA -> teks polos tengah. Gak pernah error, gak kepotong.
+-- Render FIGlet LIVE (VELIUM/PANEL ditumpuk biar muat layar HP). Urutan
+-- font (yg pertama keluar dipakai buat dua kata): banner3-D (chunky pixel,
+-- paling mirip referensi) -> banner3 -> block (clean) -> bawaan figlet.
+-- SATU warna (\27[1;33m kuning terang), reset tiap baris. Semua font ASCII
+-- murni -> gak mojibake di Termux. Figlet GAK ADA -> teks polos tengah.
+-- Gak pernah error, gak kepotong.
 -- BUTUH (sekali): `pkg install figlet` -- pasang otomatis buat RF baru.
 -- Dipanggil sekali via pcall di run() -> banner GAK BISA gagalkan start.
 -- ============================================================
-BANNER_FONTFIG = "3-d"
+BANNER_FONTS = {"banner3-D", "banner3", "block"}
 function banner_velium()
     local Y, N = "\27[1;33m", "\27[0m"
     -- lebar terminal: $COLUMNS dulu, baru stty, mentok 80. Dibatasi 200
@@ -2583,10 +2585,14 @@ function banner_velium()
         for line in (o .. "\n"):gmatch("(.-)\n") do t[#t + 1] = line end
         return t
     end
-    -- font yg kepakai: 3-d dulu, kalau gak dikenal -> bawaan figlet
-    local a1 = ambil("VELIUM", BANNER_FONTFIG)
-    local fontPakai = BANNER_FONTFIG
-    if not a1 then a1, fontPakai = ambil("VELIUM", nil), nil end
+    -- font yg kepakai: urutan BANNER_FONTS, yg pertama keluar menang buat
+    -- dua kata. Semua gagal -> bawaan figlet (tanpa -f).
+    local a1, fontPakai = nil, nil
+    for _, font in ipairs(BANNER_FONTS) do
+        a1 = ambil("VELIUM", font)
+        if a1 then fontPakai = font break end
+    end
+    if not a1 then a1 = ambil("VELIUM", nil) end
     local art = nil
     if a1 then
         local a2 = ambil("PANEL", fontPakai)
