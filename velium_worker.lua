@@ -2543,32 +2543,7 @@ function devnama_now()
 end
 
 -- v9.76: banner header COKLAT KARAMEL (versi + device + id device). border kotak rapi.
-function banner_karamel()
-    local ver = "v"..VERSION
-    local dnama = devnama_now() or "?"
-    local did = dev_id() or "?"
-    local isi = { { "VELIUM WORKER", ver }, { "device", dnama }, { "id", did } }
-    local wLbl, wVal = 0, 0
-    for _, b in ipairs(isi) do
-        if #b[1] > wLbl then wLbl = #b[1] end
-        if #b[2] > wVal then wVal = #b[2] end
-    end
-    local dalam = wLbl + wVal + 5
-    local KR, N = C.KRML, C.N
-    local function garis(kiri, kanan) return KR..kiri..string.rep("â”€", dalam)..kanan..N end
-    io.write("\n")
-    io.write(garis("â”Œ", "â”").."\n")
-    for i, b in ipairs(isi) do
-        local lbl = b[1]..string.rep(" ", wLbl - #b[1])
-        local val = b[2]..string.rep(" ", wVal - #b[2])
-        local sep = (i == 1) and " " or ":"
-        io.write(KR.."â”‚ "..N..C.BOLD..lbl..N..KR.." "..sep.." "..N..C.KOP..val..N..KR.." â”‚"..N.."\n")
-        if i == 1 then io.write(garis("â”œ", "â”¤").."\n") end
-    end
-    io.write(garis("â””", "â”˜").."\n")
-    io.write("\n")
-    io.flush()
-end
+-- (banner_karamel DIHAPUS -- box-drawing mojibake di Termux; banner_velium yg kepakai)
 
 -- ============================================================
 -- BANNER STARTUP "VELIUM PANEL" (kuning, ASCII only, sekali pas nyala).
@@ -6782,7 +6757,6 @@ function run(cfg)
     local list = split(cfg.pkgs)
     print(C.BOLD..C.G.."\n"..C.N)
     pcall(banner_velium)   -- sekali pas nyala (kuning, ASCII only, gak bisa gagalkan start)
-    banner_karamel()
     info("Tim   : "..cfg.tim.." ("..#list.." client)")
     -- v8.31: DETEKSI VERSI BARU + auto-restart client DIBUANG (v8.26). User: auto-
     -- update bikin error -- OUT semua client + buka ulang malah kacau (1/10 tiba2
@@ -7311,8 +7285,7 @@ function run(cfg)
         end
     end
 
-    -- v7.62: banner device sekali di awal (langsung keliatan, gak nunggu 60s)
-    local lastBanner = 0
+    -- v7.62: (banner karamel dihapus -- banner_velium yg kepakai)
 
     while true do
         -- ===== v4.2: pintu keluar =====
@@ -8046,13 +8019,6 @@ function run(cfg)
                     end
                     end
             end
-        end
-
-        -- v9.76: BANNER KARAMEL berkala (tiap 60s) -- netep, biar keliatan RF mana
-        -- yang lagi jalan. Kotak coklat karamel (versi + device + id).
-        if (os.time() - (lastBanner or 0)) >= 60 then
-            lastBanner = os.time()
-            banner_karamel()
         end
 
         local resp = api_get(cfg, "/perintah?tim=" .. cfg.tim)
