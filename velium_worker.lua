@@ -2573,6 +2573,10 @@ function banner_velium()
     end
     if w <= 0 then w = 80 end
     if w > 200 then w = 200 end
+    -- lebar LAYAR (codepoint, bukan byte -- huruf blok 1 char bisa 3 byte).
+    local function lebar(s)
+        return #(s:gsub("[\128-\191]", ""))
+    end
     -- ambil 1 kata dari figlet, centering DIKERJAIN FIGLET (-c -w) biar
     -- akurat juga buat huruf blok multibyte. Balikin tabel baris, atau nil
     -- kalau figlet gak ada / font gak dikenal (keluaran kosong).
@@ -2598,18 +2602,30 @@ function banner_velium()
     if not a1 then a1 = ambil("VELIUM", nil) end
     local art = nil
     if a1 then
-        local a2 = ambil("PANEL", fontPakai)
-        if a2 then
-            art = a1
-            art[#art + 1] = ""
-            for _, line in ipairs(a2) do art[#art + 1] = line end
+        -- 1) coba SATU BARIS ("VELIUM PANEL", kayak pic referensi, tanpa
+        -- newline di tengah). Muat di layar -> pakai ini.
+        local function muat(t)
+            if not t then return false end
+            for _, line in ipairs(t) do
+                if lebar(line:gsub("%s+$", "")) > w then return false end
+            end
+            return true
+        end
+        local satu = ambil("VELIUM PANEL", fontPakai)
+        if muat(satu) then
+            art = satu
+        else
+            -- 2) kepanjangan -> tumpuk VELIUM / PANEL (tetap utuh per kata,
+            -- gak wrap putus di tengah huruf)
+            local a2 = ambil("PANEL", fontPakai)
+            if a2 then
+                art = a1
+                art[#art + 1] = ""
+                for _, line in ipairs(a2) do art[#art + 1] = line end
+            end
         end
     end
-    -- ukur lebar LAYAR blok (codepoint, bukan byte -- huruf blok 1 char
-    -- bisa 3 byte; #line ngaco buat itu). Tanpa spasi ekor.
-    local function lebar(s)
-        return #(s:gsub("[\128-\191]", ""))
-    end
+    -- ukur lebar LAYAR blok (tanpa spasi ekor)
     local full = 0
     if art then
         for i, line in ipairs(art) do
