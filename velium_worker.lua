@@ -2572,27 +2572,34 @@ end
 
 -- ============================================================
 -- BANNER STARTUP "VELIUM PANEL" (kuning, ASCII only, sekali pas nyala).
--- FIGlet-style blocky 5 baris, SATU warna (\27[1;33m kuning terang),
--- reset (\27[0m) tiap baris. ASCII murni (# + spasi) biar gak mojibake
--- kayak box-drawing di Termux. Lebar terminal dari $COLUMNS / stty;
+-- Seni FIGlet 3-d DI-BAKE (bukan render runtime) -> pixel-identik di semua
+-- HP, NOL dependency (gak butuh paket figlet). SATU warna (\27[1;33m kuning
+-- terang), reset (\27[0m) tiap baris. ASCII murni (*, /, spasi) biar gak
+-- mojibake kayak box-drawing di Termux. Lebar terminal dari $COLUMNS / stty;
 -- kalau sempit -> teks polos tengah (gak pernah error, gak kepotong).
 -- Global (bukan local) biar gak makan slot batas-200 main chunk.
 -- Dipanggil sekali via pcall di run() -> banner GAK BISA gagalkan start.
 -- ============================================================
-BANNER_FONT = {
-    V = {"#   #","#   #","#   #","#   #"," ### "},
-    E = {"#####","#    ","#### ","#    ","#####"},
-    L = {"#    ","#    ","#    ","#    ","#####"},
-    I = {"#####","  #  ","  #  ","  #  ","#####"},
-    U = {"#   #","#   #","#   #","#   #","#####"},
-    M = {"#   #","## ##","# # #","#   #","#   #"},
-    P = {"#### ","#   #","#### ","#    ","#    "},
-    A = {" ### ","#   #","#####","#   #","#   #"},
-    N = {"#   #","##  #","# # #","#  ##","#   #"},
-    [" "] = {"   ","   ","   ","   ","   "},
+BANNER_ART = {
+" **      ** ******** **       ** **     ** ****     ****",
+"/**     /**/**///// /**      /**/**    /**/**/**   **/**",
+"/**     /**/**      /**      /**/**    /**/**//** ** /**",
+"//**    ** /******* /**      /**/**    /**/** //***  /**",
+" //**  **  /**////  /**      /**/**    /**/**  //*   /**",
+"  //****   /**      /**      /**/**    /**/**   /    /**",
+"   //**    /********/********/**//******* /**        /**",
+"    //     //////// //////// //  ///////  //         //",
+"",
+" *******      **     ****     ** ******** **",
+"/**////**    ****   /**/**   /**/**///// /**",
+"/**   /**   **//**  /**//**  /**/**      /**",
+"/*******   **  //** /** //** /**/******* /**",
+"/**////   **********/**  //**/**/**////  /**",
+"/**      /**//////**/**   //****/**      /**",
+"/**      /**     /**/**    //***/********/********",
+"//       //      // //      /// //////// ////////",
 }
 function banner_velium()
-    local teks = "VELIUM PANEL"
     local Y, N = "\27[1;33m", "\27[0m"
     -- lebar terminal: $COLUMNS dulu, baru stty, mentok 80. Dibatasi 200
     -- biar string.rep gak bisa makan memori kalau nilainya ngaco.
@@ -2606,30 +2613,31 @@ function banner_velium()
     end
     if w <= 0 then w = 80 end
     if w > 200 then w = 200 end
-    -- susun 5 baris + ukur lebar aslinya
-    local rows, full = {"","","","",""}, 0
-    for i = 1, #teks do
-        local g = BANNER_FONT[teks:sub(i, i)] or BANNER_FONT[" "]
-        for r = 1, 5 do rows[r] = rows[r] .. g[r] .. " " end
-    end
-    for r = 1, 5 do
-        rows[r] = rows[r]:gsub("%s+$", "")
-        if #rows[r] > full then full = #rows[r] end
+    -- ukur lebar blok (tanpa spasi ekor)
+    local full = 0
+    for _, line in ipairs(BANNER_ART) do
+        local bersih = line:gsub("%s+$", "")
+        if #bersih > full then full = #bersih end
     end
     -- sempit -> teks polos tengah (tetap kuning, tetap tengah, gak kepotong)
     if full == 0 or full > w then
-        local pad = math.max(0, math.floor((w - #teks) / 2))
+        local teks, pad = "VELIUM PANEL", 0
+        pad = math.max(0, math.floor((w - #teks) / 2))
         io.write("\n" .. Y .. string.rep(" ", pad) .. teks .. N .. "\n\n")
         io.flush()
         return
     end
+    -- blok dirata: semua baris mulai di kolom yg sama, bloknya di-tengah
     io.write("\n")
-    for r = 1, 5 do
-        -- blok dirata: semua baris mulai di kolom yg sama (rata kiri blok),
-        -- bloknya yg di-tengah. Biar sisi kiri tegak lurus.
-        local pad = math.max(0, math.floor((w - full) / 2))
-        io.write(Y .. string.rep(" ", pad) .. rows[r]
-                 .. string.rep(" ", full - #rows[r]) .. N .. "\n")
+    for _, line in ipairs(BANNER_ART) do
+        local bersih = line:gsub("%s+$", "")
+        if bersih == "" then
+            io.write("\n")   -- baris kosong: tanpa spasi ekor
+        else
+            local pad = math.max(0, math.floor((w - full) / 2))
+            io.write(Y .. string.rep(" ", pad) .. bersih
+                     .. string.rep(" ", full - #bersih) .. N .. "\n")
+        end
     end
     io.write("\n")
     io.flush()
