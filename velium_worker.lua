@@ -6707,6 +6707,24 @@ function restart_kerjakan(cfg, isi, mapAkun, mapLink, ada_stop)
     return nil   -- semua client
 end
 
+-- TIM KEMBAR: dua HP lapor pakai nama tim yg SAMA -> backend cuma nyimpen 1
+-- slot per tim -> panel giliran nampilin (flip-flop, "cuma 1 device").
+-- Dicek via /stat (GET /tim gak ada di worker baru): kalau slot nama-kita
+-- dipegang dev LAIN -> balikin dev itu (nil = slot kita / kosong).
+-- Aturan MENETAP biar gak rebutan: dev-id yg LEBIH KECIL yg pegang nama lama,
+-- yg lain pindah ke device-id sendiri. Global biar gak makan slot batas-200.
+function tim_bentrok(cfg, devSaya)
+    local st = api_get(cfg, "/stat") or ""
+    local pola = '"nama"%s*:%s*"' .. cfg.tim:gsub("(%W)", "%%%1") .. '"'
+    for obj in st:gmatch("{[^{}]-}") do
+        if obj:match(pola) then
+            local dev = obj:match('"dev"%s*:%s*"([^"]+)"')
+            if dev and dev ~= "" and dev ~= devSaya then return dev end
+        end
+    end
+    return nil
+end
+
 
 function run(cfg)
     cfg.reopen_sec  = cfg.reopen_sec or 300
@@ -6963,12 +6981,12 @@ function run(cfg)
     -- v4.14: auto-assign akun ke tim. worker kirim daftar akun yg dia pegang
     -- (dari mapAkun) ke panel -> panel tau akun ini di tim mana OTOMATIS.
     -- mode isi_kosong: gak nimpa assign manual di panel.
-    local function auto_assign_tim()
+    local function auto_assign_tim(paksa)
         local akun = {}
         for _, ak in pairs(mapAkun) do akun[#akun+1] = ak end
         if #akun == 0 then return end
         local body = '{"tim":"' .. cfg.tim .. '","game":"' .. (cfg.game_label or "") ..
-                     '","isi_kosong":true,"akun":['
+                     '","isi_kosong":' .. (paksa and "false" or "true") .. ',"akun":['
         for i, a in ipairs(akun) do
             body = body .. '"' .. a .. '"'
             if i < #akun then body = body .. "," end
@@ -7007,6 +7025,26 @@ function run(cfg)
     end
     auto_assign_tim()
     local lastAssign = os.time()
+
+    -- TIM KEMBAR self-heal (startup): slot tim ini dipegang HP lain DAN dev
+    -- dia lebih kecil (= dia yg pegang nama) -> HP ini pindah ke device-id
+    -- sendiri (unik per HP) biar dua-duanya tampil, bukan flip-flop.
+    do
+        local saya = dev_id()
+        local alien = tim_bentrok(cfg, saya)
+        if alien and alien < saya then
+            warn(("TIM KEMBAR: '%s' dipakai HP lain (dev %s) -> HP ini pindah ke '%s'"):format(
+                cfg.tim, alien:sub(1, 8), saya))
+            cfg.tim = saya
+            pcall(function() save_config(cfg) end)
+            ok("Tim HP ini sekarang: " .. cfg.tim .. " (perintah panel kirim ke nama ini)")
+            auto_assign_tim(true)   -- rebut akun ke tim baru (isi_kosong=false)
+            lastAssign = os.time()
+        elseif alien then
+            info(("TIM KEMBAR: HP lain (dev %s) nyasar ke '%s' -- dev kita lebih kecil, kita tetap; dia pindah sendiri")
+                :format(alien:sub(1, 8), cfg.tim))
+        end
+    end
 
     -- v4.11: assign PS per-client. narik dari panel /assign-ps?tim=X.
     -- hasilnya: mapLink[pkg]=link (buat buka client ke PS-nya),
@@ -10506,6 +10544,22 @@ function run(cfg)
                         PERTAMA_DIEM[pkg] = nil
                     end
                 end
+            end
+        end
+
+        -- TIM KEMBAR berkala (tiap 180s, throttle via KICK_DIURUS biar gak
+        -- nambah local run): slot tim ini direbut HP lain -> yg dev-nya gede
+        -- pindah ke device-id (aturan yg sama kayak startup).
+        if (now - (KICK_DIURUS["_twinChk"] or 0)) >= 180 then
+            KICK_DIURUS["_twinChk"] = now
+            local saya2 = dev_id()
+            local alien2 = tim_bentrok(cfg, saya2)
+            if alien2 and alien2 < saya2 then
+                warn(("TIM KEMBAR: '%s' dipakai HP lain (dev %s) -> pindah ke '%s'"):format(
+                    cfg.tim, alien2:sub(1, 8), saya2))
+                cfg.tim = saya2
+                pcall(function() save_config(cfg) end)
+                auto_assign_tim(true)
             end
         end
 
