@@ -2559,10 +2559,9 @@ end
 -- buat RF baru). Dipanggil sekali via pcall di run() -> GAK BISA gagalkan start.
 -- ============================================================
 BANNER_FONTS = {"ansi_shadow", "banner3-D", "banner3", "block"}
-function banner_velium()
-    local Y, N = "\27[1;33m", "\27[0m"
-    -- lebar terminal: $COLUMNS dulu, baru stty, mentok 80. Dibatasi 200
-    -- biar string.rep gak bisa makan memori kalau nilainya ngaco.
+-- lebar terminal sekali (dipakai banner + info). $COLUMNS dulu, baru stty,
+-- mentok 80, dibatasi 200 biar string.rep aman.
+function lebar_terminal()
     local w = tonumber(os.getenv("COLUMNS")) or 0
     if w <= 0 then
         local h = io.popen("stty size 2>/dev/null")
@@ -2573,6 +2572,11 @@ function banner_velium()
     end
     if w <= 0 then w = 80 end
     if w > 200 then w = 200 end
+    return w
+end
+function banner_velium()
+    local Y, N = "\27[1;33m", "\27[0m"
+    local w = lebar_terminal()
     -- lebar LAYAR (codepoint, bukan byte -- huruf blok 1 char bisa 3 byte).
     local function lebar(s)
         return #(s:gsub("[\128-\191]", ""))
@@ -2655,14 +2659,15 @@ function banner_velium()
     io.flush()
 end
 
--- Info versi + device + id (ASCII only, 1 baris, di bawah banner).
--- Pengganti kotak karamel yg mojibake. Pakai info() biar gaya konsisten
--- sama log worker. Global biar gak makan slot batas-200.
+-- Info versi + device + id (1 baris, tengah bawah banner, TANPA jam).
+-- Pengganti kotak karamel yg mojibake. Warna cyan sama kayak log info.
+-- Global biar gak makan slot batas-200.
 function banner_info()
-    local ver = "v" .. VERSION
-    local dnama = devnama_now() or "?"
-    local did = dev_id() or "?"
-    info(ver .. " | " .. dnama .. " | " .. did)
+    local teks = "v" .. VERSION .. " | " .. (devnama_now() or "?") .. " | " .. (dev_id() or "?")
+    local w = lebar_terminal()
+    local pad = math.max(0, math.floor((w - #teks) / 2))
+    io.write(C.C .. string.rep(" ", pad) .. teks .. C.N .. "\n")
+    io.flush()
 end
 
 -- ============================================================
