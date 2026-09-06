@@ -3487,17 +3487,27 @@ end
 -- 1 RF = 1 game, jadi 1 loader (sesuai game tim) buat semua client.
 -- v5.29: url bisa DITIMPA panel (script per tim). Kalau urlPanel dikasih,
 -- itu yang dipakai; kalau nggak, jatuh ke cfg.script_url lokal RF kayak dulu.
+-- v9.305: EKSEKUSI SCRIPT DIMATIKAN TOTAL (STAR/SEED/FARM/MARKET/PANEN).
+-- Fungsi ini sekarang CUMA BERSIHIN sisa loader lama (velium/zenx, .txt/.lua)
+-- dari folder autoexec biar TIDAK ADA script yang kejalanin. Client join game
+-- POLOS. Semua pemanggil (run, setup, panel-override, velium script) otomatis
+-- jadi cleanup. Selalu balikin false (= gak nulis apa-apa).
 function tulis_autoexec(cfg, urlPanel)
-    -- v9.263: Arceus -> loader udah ditulis pasang.sh (velium.lua statis). Worker GAK usah
-    -- nulis velium_loader.txt di sini (biar gak dobel loader + ilangin warning "GAGAL nulis").
-    if cfg.executor == "arceus" then
-        return true
+    local AUTOEXEC_DIR = (cfg and cfg.autoexec_dir) or "/sdcard/Delta/Autoexecute"
+    local bersih = 0
+    for _, nm in ipairs({ "velium_loader.txt", "velium_loader.lua", "zenx_loader.txt", "zenx_loader.lua" }) do
+        local p = AUTOEXEC_DIR .. "/" .. nm
+        local f = io.open(p, "r")
+        if f then
+            f:close()
+            os.remove(p)
+            bersih = bersih + 1
+        else
+            sh_silent("su -c 'rm -f \"" .. p .. "\"' 2>/dev/null")
+        end
     end
-    local url_script = (urlPanel and urlPanel ~= "") and urlPanel or cfg.script_url
-    if not url_script or url_script == "" then
-        warn("script_url kosong, autoexec dilewat")
-        return false
-    end
+    if bersih > 0 then ok("Sisa loader script dibuang (" .. bersih .. "): client join POLOS, tanpa script") end
+    if false then   -- v9.305: seluruh penulisan loader lama dimatikan (lihat atas)
     local AUTOEXEC_DIR = cfg.autoexec_dir or "/sdcard/Delta/Autoexecute"
     -- loader: narik script dari GitHub. update cukup di GitHub, file autoexec tetap.
     -- v9.261: HAPUS cache market DULU sebelum fetch. Bug: market.lua nyimpen
@@ -3595,6 +3605,8 @@ function tulis_autoexec(cfg, urlPanel)
         warn("  cek izin folder Delta / root masih jalan?")
         return false
     end
+    end   -- tutup 'if false' v9.305 (penulisan loader mati total)
+    return false
 end
 
 -- v4.12: bawa SEMUA client freeform ke depan sekaligus. pas pencet Termux/app lain,
@@ -6287,14 +6299,14 @@ function setup_wizard()
     print(C.G.."  -> "..cfg.game_label.." (place "..cfg.place_id..")"..C.N)
 
     -- ============================================================
-    -- SCRIPT DIHAPUS. Dulu wizard nanya STAR FARM / STAR SEED / MARKET terus
-    -- narik script dari GitHub (ronihub) via autoexec. Sekarang: TANPA script.
-    -- Client join game polos. tulis_autoexec dilewat kalau script_url kosong.
-    -- Mau script lagi? Set manual di config (script_url/script_label) atau
-    -- perintah `velium script`.
+    -- SCRIPT DIHAPUS TOTAL (v9.305). Dulu wizard nanya STAR FARM / STAR SEED /
+    -- MARKET terus narik script dari GitHub (ronihub) via autoexec. Sekarang:
+    -- TANPA script, client join game polos. `velium script` juga dimatikan,
+    -- tawaran script dari panel diabaikan. Label script dikosongin juga.
     -- ============================================================
     cfg.script_url = ""
     cfg.script_label = ""
+    pcall(function() tulis_autoexec(cfg) end)   -- v9.305: bersihin loader lama langsung
     print(C.D.."  Link join: paste share-URL ATAU linkCode. kosong=public."..C.N)
     cfg.link_code=ask("Link/code (Enter=public)","")
     -- v5.36: pertanyaan "Folder autoexec" DIBUANG. Jawabannya selalu sama --
@@ -6935,7 +6947,7 @@ function run(cfg)
         end
     end
 
-    tulis_autoexec(cfg)   -- v4.8: pasang loader ke autoexec Delta
+    tulis_autoexec(cfg)   -- v9.305: BUKAN pasang loader -- BERSIHIN sisa loader (polos)
 
     -- v4.18: kunci orientasi (kalau diset) + keep-alive awal
     if cfg.orientasi == "landscape" or cfg.orientasi == "portrait" then
@@ -10133,34 +10145,17 @@ function run(cfg)
 
 
         -- ============================================================
-        -- v5.29: SCRIPT PER TIM DARI PANEL.
-        -- Panel nentuin tim ini jalanin script apa; URL-nya nebeng di /perintah
-        -- (yang emang udah di-poll), jadi gak nambah request.
-        -- Ganti script = tulis ulang autoexec + REJOIN. Rejoin-nya WAJIB:
-        -- Delta cuma baca folder Autoexecute pas aplikasi masuk game, jadi
-        -- client yang lagi jalan bakal tetep pakai script lama sampai join ulang.
+        -- v5.29: SCRIPT PER TIM DARI PANEL -> DIMATIKAN (v9.305).
+        -- Eksekusi script dimatikan total: tawaran scriptUrl dari backend
+        -- DIABAIKAN (dicatat sekali biar ketauan, gak dieksekusi, gak rejoin).
         -- ============================================================
         do
-            local scrUrl   = ambil_str(resp, "scriptUrl") or ""
-            local scrNama  = ambil_str(resp, "scriptNama") or ""
-            local scrGanti = tonumber((resp or ""):match('"scriptGanti"%s*:%s*(%d+)')) or 0
-            if scrUrl ~= "" and scrGanti > 0 and scrGanti ~= SCRIPT_KERJAKAN then
-                if scrUrl ~= SCRIPT_URL_AKHIR then
-                    tambahLog("PANEL: script diganti -> " .. (scrNama ~= "" and scrNama or scrUrl))
-                    if tulis_autoexec(cfg, scrUrl) then
-                        SCRIPT_URL_AKHIR = scrUrl
-                        -- Client yang lagi jalan masih megang script LAMA -- Delta
-                        -- cuma baca Autoexecute pas masuk game. Jadi ditutup;
-                        -- yang buka lagi biar blok FORCE di bawah (kalau STANDBY,
-                        -- ya emang sengaja gak dibuka).
-                        tambahLog("Tutup semua client -- script baru kepakai pas join ulang")
-                        close_all(cfg, nil, mapLink)
-                    else
-                        tambahLog("! gagal nulis autoexec buat script baru")
-                    end
-                end
-                SCRIPT_KERJAKAN = scrGanti
+            local scrUrl = ambil_str(resp, "scriptUrl") or ""
+            if scrUrl ~= "" and scrUrl ~= (KICK_DIURUS["_scrWarn"] or "") then
+                KICK_DIURUS["_scrWarn"] = scrUrl
+                warn("Backend nawarin script, DIABAIKAN (eksekusi script dimatikan): " .. scrUrl:sub(1, 60))
             end
+            SCRIPT_KERJAKAN = tonumber((resp or ""):match('"scriptGanti"%s*:%s*(%d+)')) or SCRIPT_KERJAKAN
         end
 
         -- v4.9: AUTO-REJOIN per client. cek tiap akun (dari mapping client<->akun)
@@ -16344,68 +16339,15 @@ if PERINTAH == "panel" or PERINTAH == "uji" then
 end
 
 -- ============================================================
--- v5.35: `velium script` -- ganti script autoexec tanpa setup ulang.
--- Tanpa ini, mau tuker STAR FARM <-> STAR SEED harus ngulang setup dari nol
--- (nomor tim, game, scan paket, dst) -- padahal yang mau diubah satu baris.
+-- v5.35: `velium script` -> DINONAKTIFKAN (v9.305).
+-- Eksekusi script dimatikan total: perintah ini cuma bersihin sisa loader
+-- lama, gak install/ganti script apa pun. Client join game polos.
 -- ============================================================
 if PERINTAH == "script" or PERINTAH == "sc" then
     local cfg = load_config()
-    if not cfg then err("Config belum ada. Jalanin setup dulu."); return end
-
-    local GH = "https://raw.githubusercontent.com/alzafabocahbocah-boop/ronihub/main/"
-    local PILIHAN = {
-        { "STAR FARM", "gag2",   "farm kebun: tanam, collect, jual" },
-        { "STAR SEED", "seed",   "AFK beli seed + gear + pet, terima gift" },
-        { "MARKET",    "market", "akun market / TradeWorld" },
-    }
-
-    print(C.BOLD .. C.C .. "\n=== GANTI SCRIPT AUTOEXEC ===\n" .. C.N)
-    info("tim      : " .. tostring(cfg.tim))
-    info("game     : " .. tostring(cfg.game_label or "-"))
-    info("sekarang : " .. tostring(cfg.script_label or "-") ..
-         "  (" .. tostring(cfg.script_url or "-") .. ")")
-    print("")
-
-    -- boleh langsung: velium script seed
-    local minta = (arg[2] or ""):lower()
-    local sc
-    if minta ~= "" then
-        for _, x in ipairs(PILIHAN) do
-            if minta == x[2] or minta == x[1]:lower():gsub("%s", "")
-               or minta == x[1]:lower() then sc = x break end
-        end
-        if not sc then
-            err("'" .. minta .. "' gak dikenal. Pilihannya: gag2 / seed / market")
-            return
-        end
-    else
-        for i, x in ipairs(PILIHAN) do
-            print(C.D .. string.format("  %d) %-10s -> %-7s  %s", i, x[1], x[2], x[3]) .. C.N)
-        end
-        print("")
-        local ps = ask("Pilih (1/2/3, Enter=batal)", "")
-        if ps == "" then info("Dibatalin."); return end
-        sc = PILIHAN[tonumber(ps) or 0]
-        if not sc then err("Pilihan gak ada."); return end
-    end
-
-    if cfg.script_url == (GH .. sc[2]) then
-        info("Udah pakai " .. sc[1] .. " -- gak ada yang diubah.")
-        return
-    end
-
-    cfg.script_url = GH .. sc[2]
-    cfg.script_label = sc[1]
-    save_config(cfg)
-    ok("Config disimpen: " .. sc[1] .. " -> " .. cfg.script_url)
-
-    -- tulis ulang autoexec biar langsung kepakai
-    if tulis_autoexec(cfg) then
-        print("")
-        warn("Client yang LAGI JALAN masih pakai script LAMA.")
-        warn("Delta cuma baca autoexec pas masuk game -- jadi harus join ulang:")
-        info("  panel -> tim ini -> Rejoin   (atau: velium stop terus jalanin lagi)")
-    end
+    if cfg then pcall(function() tulis_autoexec(cfg) end) end
+    warn("Perintah script DIHAPUS -- worker jalan polos tanpa script game.")
+    info("Loader sisa (kalau ada) udah dibersihin dari folder autoexec.")
     print("")
     return
 end
@@ -16631,7 +16573,7 @@ if PERINTAH ~= "" then
     info("   velium cookie all         -> ekstrak dari semua paket kepasang")
     info("   velium verif              -> daftar client yang butuh dicek manual (nyangkut/verif bot)")
     info("   velium panel              -> UJI sambungan ke panel (kalau tim kosong di panel)")
-    info("   velium script             -> ganti script autoexec (STAR FARM / STAR SEED / MARKET)")
+    info("   velium script             -> (dihapus, worker polos tanpa script game)")
     info("   velium script seed        -> langsung ke STAR SEED, tanpa nanya")
     info("   velium layar [client]     -> dump sinyal layar (buat bedain Home vs di game)")
     print()
