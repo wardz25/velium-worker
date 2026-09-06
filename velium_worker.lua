@@ -2942,8 +2942,13 @@ function build_url(cfg, link_client)
         -- HALAMAN GAME -> nyangkut Home, gak masuk). Komentar lama bilang linkCode
         -- ditolak "no permission" -- itu dulu buat server ORANG LAIN. Sekarang tiap akun
         -- server SENDIRI (owner) -> boleh join. placeId ikut dunia = universe-level.
+        -- v9.304: placeId IKUT LINK (/games/<id>), BUKAN cfg.place_id. Link PS bawa
+        -- map-nya sendiri (Move Account antar-map) -> join ke map ITU. Dulu selalu
+        -- cfg.place_id -> link GAG 1 malah join GAG 2 (map device). Tanpa /games/<id>
+        -- (format lain) -> fallback cfg.place_id (perilaku lama).
         local code = lc:match("privateServerLinkCode=([^&%s]+)")
-        return code and ("roblox://placeId="..cfg.place_id.."&linkCode="..code) or lc
+        local pid = lc:match("/games/(%d+)") or cfg.place_id
+        return code and ("roblox://placeId="..pid.."&linkCode="..code) or lc
     elseif lc:find("accessCode=") then
         -- v7.36: PRIVATE SERVER via accessCode (dari velium getps -- API Roblox
         -- private-servers). Format: "accessCode=UUID". Join langsung ke PS akun.
@@ -3080,6 +3085,9 @@ function open_one(cfg, pkg, link_client, alasan, pakai_S)
             -- Home; web URL + CLEAR_TOP nge-reset activity Home tanpa stop app.
             -- Konversi ke web URL inline (gak bikin fungsi baru -- batas 200 lokal):
             local pid_w = cfg.place_id or "129343810645058"
+            -- v9.304: URL yg bawa placeId sendiri (deep link placeId= / /games/<id>)
+            -- menang atas cfg.place_id (Move Account antar-map). Fallback lama kalau gak ada.
+            local pid_u = url:match("placeId=(%d+)") or url:match("/games/(%d+)") or pid_w
             local url_web
             if url:find("share%?code=") or url:find("/share%?") then
                 url_web = url   -- link share -> pakai apa adanya (udah http)
@@ -3088,15 +3096,15 @@ function open_one(cfg, pkg, link_client, alasan, pakai_S)
                 -- JANGAN konversi ke accessCode (itu format BEDA -> Roblox tolak
                 -- "no permission"). URL https lengkap = persis link manual (works).
                 url_web = url:sub(1,4) == "http" and url
-                    or ("https://www.roblox.com/games/"..pid_w.."/x?"..url:match("(privateServerLinkCode=[%w]+)"))
+                    or ("https://www.roblox.com/games/"..pid_u.."/x?"..url:match("(privateServerLinkCode=[%w]+)"))
             else
                 local kode_w = (url:match("accessCode=([%w%-]+)")
                     or url:match("linkCode=([%w%-]+)")
                     or url:match("code=([%w%-]+)"))
                 if kode_w then
-                    url_web = "https://www.roblox.com/games/start?placeId="..pid_w.."&accessCode="..kode_w
+                    url_web = "https://www.roblox.com/games/start?placeId="..pid_u.."&accessCode="..kode_w
                 else
-                    url_web = "https://www.roblox.com/games/start?placeId="..pid_w
+                    url_web = "https://www.roblox.com/games/start?placeId="..pid_u
                 end
             end
             inner = "am start -a android.intent.action.VIEW -d '"..url_web.."'"
@@ -3412,7 +3420,8 @@ function tunggu_jalan(pkg, batas, cek_batal, cfg, link)
                 -- depan, GAK nyuruh join game -> stuck Home (3MB). Sekarang tembak
                 -- web URL + CLEAR_TOP (0x14000000) = beneran join game.
                 if cfg and link and link ~= "" then
-                    local pid_w = cfg.place_id or "129343810645058"
+                    -- v9.304: placeId IKUT LINK (deep link / /games/<id>), fallback cfg.
+                    local pid_w = (link:match("placeId=(%d+)") or link:match("/games/(%d+)")) or cfg.place_id or "129343810645058"
                     local kode_w = (link:match("accessCode=([%w%-]+)")
                         or link:match("linkCode=([%w%-]+)")
                         or link:match("privateServerLinkCode=([%w%-]+)")
@@ -13945,15 +13954,17 @@ end
 -- force-stop -> masuk game. Cara WC/JACKPOT dari open_one (terbukti aman, client lain OK).
 function ke_url_web(cfg, url)
     local pid_w = cfg.place_id or "129343810645058"
-    if not url or url == "" then return "https://www.roblox.com/games/start?placeId="..pid_w end
+    -- v9.304: placeId IKUT URL (deep link / /games/<id>), fallback cfg (antar-map).
+    local pid_u = (url and (url:match("placeId=(%d+)") or url:match("/games/(%d+)"))) or pid_w
+    if not url or url == "" then return "https://www.roblox.com/games/start?placeId="..pid_u end
     if url:find("share%?code=") or url:find("/share%?") then return url end
     if url:find("privateServerLinkCode=") then
         return url:sub(1,4) == "http" and url
-            or ("https://www.roblox.com/games/"..pid_w.."/x?"..url:match("(privateServerLinkCode=[%w]+)"))
+            or ("https://www.roblox.com/games/"..pid_u.."/x?"..url:match("(privateServerLinkCode=[%w]+)"))
     end
     local kode_w = url:match("accessCode=([%w%-]+)") or url:match("linkCode=([%w%-]+)") or url:match("code=([%w%-]+)")
-    if kode_w then return "https://www.roblox.com/games/start?placeId="..pid_w.."&accessCode="..kode_w end
-    return "https://www.roblox.com/games/start?placeId="..pid_w
+    if kode_w then return "https://www.roblox.com/games/start?placeId="..pid_u.."&accessCode="..kode_w end
+    return "https://www.roblox.com/games/start?placeId="..pid_u
 end
 
 function buka_grup_rotasi(cfg, pkgs, mapLink, chunkGap, cekAbort, gridBasis)
