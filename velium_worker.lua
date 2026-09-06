@@ -1,7 +1,7 @@
 #!/usr/bin/env lua
 -- ============================================================
 -- VELIUM WORKER  v4.2  (Termux, Redfinger)
--- 1 WORKER = 1 TIM = 1 RedFinger = 6-10 client Roblox.
+-- 1 WORKER = 1 TIM = 1 device = N client Roblox (TANPA BATAS: 6, 20, 50+).
 --
 -- Beda dari v3.0 (ntfy) -> v4.0 (Cloudflare Worker):
 --   * ntfy DIBUANG. Satu layanan, satu kunci, satu alamat.
@@ -654,8 +654,10 @@ end
 end
 VERSION = "9.300-cf"
 -- v9.205: SPLIT tim. tim 1 (loop utama) = client 1..TIM1_AKHIR, tim 2 (borong) =
--- TIM1_AKHIR+1..total. Ubah angka ini buat ganti pembagian (default 15 -> tim1 1-15,
--- tim2 16-total). GLOBAL (bukan local) biar gak makan slot 200 main chunk.
+-- TIM1_AKHIR+1..total. NILAINYA DIHITUNG atur_split() (di bawah, dekat pkgs_slot),
+-- BUKAN angka mati: rotasi OFF = SEMUA client di loop utama (50+ OK), rotasi ON =
+-- tim1_akhir dari config (bawaan 10). GLOBAL (bukan local) biar gak makan slot
+-- 200 main chunk.
 TIM1_AKHIR = 10
 -- v5.71: kick yang udah diurus, kunci = "<akun>:<kick_ts>".
 -- Pakai kick_ts, bukan cuma nama akun: satu akun bisa kena kick berkali-kali,
@@ -927,6 +929,8 @@ function save_config(cfg)
     f:write(string.format("  rotasi_batch=%d,\n",math.floor(tonumber(cfg.rotasi_batch) or 5)))
     f:write(string.format("  rotasi_open_sec=%d,\n",math.floor(tonumber(cfg.rotasi_open_sec) or 80)))
     f:write(string.format("  rotasi_dunia=%q,\n",cfg.rotasi_dunia or "sama"))
+    -- v9.301: batas loop utama (0 = auto: rotasi OFF = semua client, ON = 10)
+    f:write(string.format("  tim1_akhir=%d,\n",math.floor(tonumber(cfg.tim1_akhir) or 0)))
     f:write(string.format("  deteksi_longgar=%s,\n",tostring(cfg.deteksi_longgar == true)))
     f:write(string.format("  disconnect_menit=%d,\n",cfg.disconnect_menit or 3))
     f:write(string.format("  jaga_depan_sec=%d,\n",cfg.jaga_depan_sec or 15))  -- v5.91: JANGAN 0 -- 0 matiin jaga_depan (jendela gak balik ke depan). Default aman 15.
@@ -941,6 +945,10 @@ function save_config(cfg)
     f:write(string.format("  key_jam=%d,\n",cfg.key_jam or 24))
     f:write(string.format("  home_detik=%d,\n",cfg.home_detik or 60))
     f:write(string.format("  auto_key=%s,\n",tostring(cfg.auto_key == true)))
+    -- v9.303: cek_lisensi opt-in (bawaan MATI). Kalau gak pakai lisensi Delta,
+    -- blok PRIORITAS MUTLAK di top-loop di-skip total (gak spam, gak skip stock,
+    -- gak paksa bypass). Nyalain manual kalau pakai Delta: cek_lisensi=true.
+    f:write(string.format("  cek_lisensi=%s,\n",tostring(cfg.cek_lisensi == true)))
     f:write(string.format("  key_tap=%q,\n",cfg.key_tap or ""))
     f:write(string.format("  gofile_token=%q,\n",cfg.gofile_token or ""))  -- v6.79: token gofile premium
     f:write(string.format("  apk_folder=%q,\n",tostring(cfg.apk_folder or "")))
@@ -3660,6 +3668,8 @@ end
 SELA = 15   -- jarak antar jendela = SELA x 2
 
 -- templat dipilih tangan; rumus akar kuadrat boros (8 client jadi 3x3, nganggur 1)
+-- v9.301: TANPA BATAS client (50+): templat eksplisit sampai 64 (maks 8 kolom),
+-- selebihnya fallback akar kuadrat di petak_untuk/grid_hitung.
 SUSUNAN = {
     [1]={1,1}, [2]={2,1}, [3]={3,1},  [4]={2,2},
     [5]={3,2}, [6]={3,2}, [7]={4,2},  [8]={4,2},
@@ -3669,6 +3679,13 @@ SUSUNAN = {
     -- v9.208: 16-20 buat TES `velium buka N` (semua 5 kolom, N/5 baris).
     [13]={5,3},[14]={5,3},[15]={5,3},
     [16]={5,4},[17]={5,4},[18]={5,4},[19]={5,4},[20]={5,4},
+    [21]={5,5},[22]={5,5},[23]={5,5},[24]={5,5},[25]={5,5},
+    [26]={6,5},[27]={6,5},[28]={6,5},[29]={6,5},[30]={6,5},
+    [31]={6,6},[32]={6,6},[33]={6,6},[34]={6,6},[35]={6,6},[36]={6,6},
+    [37]={7,6},[38]={7,6},[39]={7,6},[40]={7,6},[41]={7,6},[42]={7,6},
+    [43]={7,7},[44]={7,7},[45]={7,7},[46]={7,7},[47]={7,7},[48]={7,7},[49]={7,7},
+    [50]={8,7},[51]={8,7},[52]={8,7},[53]={8,7},[54]={8,7},[55]={8,7},[56]={8,7},
+    [57]={8,8},[58]={8,8},[59]={8,8},[60]={8,8},[61]={8,8},[62]={8,8},[63]={8,8},[64]={8,8},
 }
 
 KUNCI_JENDELA = {
@@ -5971,33 +5988,89 @@ end
 -- manggil pkg_running SENDIRI per client -- 4 client = 4 panggilan su (~24
 -- detik) TIAP LAPOR. Itu yang bikin panel telat banget update-nya, sekaligus
 -- bikin satu putaran loop jadi panjang.
+-- v9.301: BACA COOKIE SEKALIGUS (1 su call buat SEMUA client). Dulu per-client
+-- (1-2 su x N client) -> 50 client = ~100 su (~10 menit) TIAP lapor -> panel
+-- telat/stale. Sekarang tulis 1 script sh (semua sqlite3+cat prefs), jalanin
+-- sekali via su, parse per marker @CK/@UN. Client yg miss/ketinggalan -> fallback
+-- per-client lama di lapor() (hasil SAMA, cuma lebih lambat buat yg itu doang).
+-- Return: map pkg -> {ck=..., un=...}. GLOBAL biar gak makan slot local.
+function cookie_batch(list)
+    local hasil = {}
+    if not list or #list == 0 then return hasil end
+    for _, p in ipairs(list) do hasil[p] = { ck = "", un = "" } end
+    local HOME = os.getenv("HOME") or "/data/data/com.termux/files/home"
+    local SQ = "/data/data/com.termux/files/usr/bin/sqlite3"
+    local skrip = HOME .. "/.cookiecek.sh"
+    local f = io.open(skrip, "w")
+    if not f then return hasil end
+    f:write("#!/system/bin/sh\n")
+    for _, p in ipairs(list) do
+        local db = "/data/data/" .. p .. "/app_webview/Default/Cookies"
+        local pr = "/data/data/" .. p .. "/shared_prefs/prefs.xml"
+        f:write('echo "@CK ' .. p .. '"\n')
+        f:write('timeout 6 ' .. SQ .. ' "' .. db .. '" "SELECT value FROM cookies WHERE name=\'.ROBLOSECURITY\';" 2>/dev/null\n')
+        f:write('echo "@UN ' .. p .. '"\n')
+        f:write('timeout 6 cat "' .. pr .. '" 2>/dev/null | grep -o \'<string name="username">[^<]*</string>\'\n')
+    end
+    f:close()
+    local keluar = HOME .. "/.cookiecek.out"
+    sh_tmo("su -c 'sh " .. skrip .. " > " .. keluar .. " 2>/dev/null'", 15 + #list * 8)
+    local fo = io.open(keluar, "r")
+    if not fo then return hasil end
+    local mode, cur = nil, nil
+    for baris in fo:lines() do
+        local m, pkg = baris:match("^@(%u+) (%S+)%s*$")
+        if m and hasil[pkg] then
+            mode, cur = m, pkg
+        elseif cur then
+            if mode == "CK" then
+                hasil[cur].ck = hasil[cur].ck .. baris .. "\n"
+            elseif mode == "UN" then
+                local u = baris:match("<string[^>]*>(.-)</string>")
+                if u and u ~= "" then hasil[cur].un = u end
+            end
+        end
+    end
+    fo:close()
+    return hasil
+end
+
 function lapor(cfg, isi_perintah, cache)
     local used, free, total = baca_ram()
     local list = split(cfg.pkgs)
     local parts, jalan = {}, 0
     local semua = cache
     if not semua then semua = pkg_running_semua(list) end   -- cadangan: sekali dump
+    local batchCk = cookie_batch(list)   -- v9.301: 1 su buat semua (bukan 1-2 su/client)
     for idxPkg, pkg in ipairs(list) do
         local run = semua[pkg] and true or false
         if run then jalan = jalan + 1 end
         -- v6.03: ikut kirim NAMA AKUN tiap client biar panel bisa nunjukin
         -- "akun ini jalan di client mana".
         -- v6.41: username DARI COOKIE (akurat abis ganti akun) -- prefs.xml bisa
-        -- ketinggalan. Query dikasih timeout 8s biar gak HANG kalau client beku /
-        -- SQL lock. Fallback prefs.xml kalau cookie gagal/timeout.
+        -- ketinggalan. v9.301: dari batch (1 su); yg miss -> fallback per-client
+        -- lama di bawah (hasil sama).
         local akunPkg = ""
         do
-            local dbC = "/data/data/" .. pkg .. "/app_webview/Default/Cookies"
-            local hK = io.popen(("timeout 8 su -c %s 2>/dev/null"):format(shq(
-                "/data/data/com.termux/files/usr/bin/sqlite3 " .. dbC ..
-                " \"SELECT value FROM cookies WHERE name='.ROBLOSECURITY'\"")))
-            local ckK = hK and hK:read("*all") or ""
-            if hK then hK:close() end
-            ckK = cookie_terpanjang(ckK or "")
+            local b = batchCk[pkg]
+            local ckK = cookie_terpanjang(b and b.ck or "")
             if ckK ~= "" and ckK:find("_|WARNING") then
                 akunPkg = uname_dari_cookie(ckK) or ""
             end
-            if akunPkg == "" then akunPkg = baca_username(pkg) or "" end
+            if akunPkg == "" and b and b.un and b.un ~= "" then akunPkg = b.un end
+            if akunPkg == "" then
+                local dbC = "/data/data/" .. pkg .. "/app_webview/Default/Cookies"
+                local hK = io.popen(("timeout 8 su -c %s 2>/dev/null"):format(shq(
+                    "/data/data/com.termux/files/usr/bin/sqlite3 " .. dbC ..
+                    " \"SELECT value FROM cookies WHERE name='.ROBLOSECURITY'\"")))
+                local ckF = hK and hK:read("*all") or ""
+                if hK then hK:close() end
+                ckF = cookie_terpanjang(ckF or "")
+                if ckF ~= "" and ckF:find("_|WARNING") then
+                    akunPkg = uname_dari_cookie(ckF) or ""
+                end
+                if akunPkg == "" then akunPkg = baca_username(pkg) or "" end
+            end
         end
         -- v6.48: ikut kirim alasan "belum ganti" (kalau ada) biar panel bisa
         -- nampilin kenapa client belum ke-ganti akun (cookie mati/ban/dll).
@@ -6015,9 +6088,12 @@ function lapor(cfg, isi_perintah, cache)
         -- run=proses hidup (bisa nyangkut loading), denyut=beneran di game. Denyut
         -- >150s = akun gak lapor = OFF di panel (walau proses masih jalan).
         local denyutU = akunPkg ~= "" and DENYUT_UMUR[akunPkg] or nil
-        parts[#parts+1] = string.format('{"pkg":%s,"idx":%d,"run":%s,"akun":%s,"gantigagal":%s,"offlama":%d,"captcha":%s,"denyut":%s}',
+        -- v9.302: wplace = map override per-akun (panel Move Account). Backend
+        -- pakai ini buat place akun -> team map tujuan. "" = ikut device.
+        local wpl = (akunPkg ~= "" and ASSIGN_PLACE and ASSIGN_PLACE[akunPkg]) or ""
+        parts[#parts+1] = string.format('{"pkg":%s,"idx":%d,"run":%s,"akun":%s,"gantigagal":%s,"offlama":%d,"captcha":%s,"denyut":%s,"wplace":%s}',
             jstr(pkg), idxPkg, tostring(run), jstr(akunPkg), jstr(gg or ""), math.floor(tonumber(offL) or 0), tostring(capt),
-            denyutU and tostring(math.floor(denyutU)) or "null")
+            denyutU and tostring(math.floor(denyutU)) or "null", jstr(wpl))
     end
 
     -- v4.24: ikut kirim "lagi ngapain" + log terakhir
@@ -6045,8 +6121,10 @@ function lapor(cfg, isi_perintah, cache)
             local ada = {}
             for i = 1, #split(cfg.pkgs or "") do ada[i] = true end
             for n, _ in pairs(DELTA_SLOT_DL) do ada[n] = true end
-            local arr = {}
-            for n = 1, 30 do if ada[n] then arr[#arr+1] = n end end
+            -- v9.301: TANPA BATAS slot (dulu 1..30): urutin semua slot yg ada
+            local arr, maks = {}, 0
+            for n in pairs(ada) do if n > maks then maks = n end end
+            for n = 1, maks do if ada[n] then arr[#arr+1] = n end end
             return jstr(table.concat(arr, ","))
         end)()
     )
@@ -6639,15 +6717,17 @@ function restart_kerjakan(cfg, isi, mapAkun, mapLink, ada_stop)
     return nil   -- semua client
 end
 
--- TIM KEMBAR: dua HP lapor pakai nama tim yg SAMA -> backend cuma nyimpen 1
+-- TIM KEMBAR: dua HP lapor pakai nama tim yg SAMA -> backend LAMA cuma nyimpen 1
 -- slot per tim -> panel giliran nampilin (flip-flop, "cuma 1 device").
--- Dicek via /stat (GET /tim gak ada di worker baru): kalau slot nama-kita
--- dipegang dev LAIN -> balikin dev itu (nil = slot kita / kosong).
+-- Backend BARU udah key tim|dev (1 slot per HP) jadi kembar gak ketimpa lagi,
+-- tapi HP config LAMA tetap di-heal ke device-id biar perintah panel nyasar
+-- ke HP yg bener. Dicek via GET /tim (ada di worker baru): kalau slot
+-- nama-kita dipegang dev LAIN -> balikin dev itu (nil = slot kita / kosong).
 -- Aturan MENETAP biar gak rebutan: dev-id yg LEBIH KECIL yg pegang nama lama,
 -- yg lain pindah ke device-id sendiri. Global biar gak makan slot batas-200.
 function tim_bentrok(cfg, devSaya)
-    local st = api_get(cfg, "/stat") or ""
-    local pola = '"nama"%s*:%s*"' .. cfg.tim:gsub("(%W)", "%%%1") .. '"'
+    local st = api_get(cfg, "/tim") or ""
+    local pola = '"tim"%s*:%s*"' .. cfg.tim:gsub("(%W)", "%%%1") .. '"'
     for obj in st:gmatch("{[^{}]-}") do
         if obj:match(pola) then
             local dev = obj:match('"dev"%s*:%s*"([^"]+)"')
@@ -6769,7 +6849,8 @@ function run(cfg)
     print(C.BOLD..C.G.."\n"..C.N)
     pcall(banner_velium)   -- sekali pas nyala (kuning, ASCII only, gak bisa gagalkan start)
     pcall(banner_info)     -- versi + device + id, 1 baris ASCII di bawah banner
-    info("Tim   : "..cfg.tim.." ("..#list.." client)")
+    atur_split(cfg)        -- v9.301: split ngikutin kondisi (rotasi OFF = semua client di loop)
+    info(("Tim   : %s (%d client, loop %d)"):format(cfg.tim, #list, TIM1_AKHIR))
     -- v8.31: DETEKSI VERSI BARU + auto-restart client DIBUANG (v8.26). User: auto-
     -- update bikin error -- OUT semua client + buka ulang malah kacau (1/10 tiba2
     -- jalan). Update worker gak usah auto-restart client; client dibiarin, FORCE
@@ -7000,22 +7081,37 @@ function run(cfg)
     local mapLink, mapPsNama = {}, {}
     local function refresh_ps()
         local r = api_get(cfg, "/assign-ps?tim=" .. cfg.tim)
-        -- format: {"assign":[{"akun":"fifinx_5","ps_nama":"leveling 1","link":"..."},...]}
+        -- format: {"assign":[{"akun":"fifinx_5","ps_nama":"leveling 1","link":"...","place":"..."},...]}
+        -- "place" = override MAP per-akun (panel Move Account). mapLink dipakai
+        -- SEMUA jalur buka -> akun pindah map sendirian. Formulir lama tanpa
+        -- place tetap jalan (diabaikan).
         -- cocokin akun -> pkg (lewat mapAkun kebalik)
         local akun2pkg = {}
         for pkg, ak in pairs(mapAkun) do akun2pkg[ak] = pkg end
         mapLink, mapPsNama = {}, {}
+        ASSIGN_PLACE = {}
+        local fp = {}
         -- parse tiap objek assign
         for obj in (r or ""):gmatch('{.-}') do
             local akun = obj:match('"akun"%s*:%s*"(.-)"')
             local psn  = obj:match('"ps_nama"%s*:%s*"(.-)"')
             local link = obj:match('"link"%s*:%s*"(.-)"')
+            local place = obj:match('"place"%s*:%s*"(.-)"')
             if akun and akun2pkg[akun] then
                 local pkg = akun2pkg[akun]
                 if link and link ~= "" then mapLink[pkg] = link end
                 if psn and psn ~= "" then mapPsNama[pkg] = psn end
+                -- place cuma sah kalau link-nya ADA (tanpa link = gak bisa
+                -- dibuka ke sana -> jangan lapor map palsu)
+                if place and place:match("^%d+$") and link and link ~= "" then
+                    ASSIGN_PLACE[akun] = place
+                    fp[#fp+1] = akun .. "=" .. place
+                end
             end
         end
+        table.sort(fp)
+        local sig = table.concat(fp, ";")
+        if sig ~= (ASSIGN_SIG or "") then ASSIGN_SIG = sig; ASSIGN_REV = (ASSIGN_REV or 0) + 1 end
     end
     refresh_ps()
     -- v7.36: GABUNG PS LINK dari getps (per akun, disimpen backend kolom ps_link).
@@ -7368,8 +7464,12 @@ function run(cfg)
             -- Kalau Delta HILANG -> paksa bypass LANGSUNG (reset gate) + SKIP proses stock
             -- ronde ini. Percuma rotasi kalau client nyangkut layar key. Lisensi balik
             -- dulu, baru urus stock. User: lisensi lebih utama dari perintah apapun.
+            -- v9.303: fitur ini NONAKTIF kecuali cek_lisensi=true di config.
+            -- Tanpa lisensi Delta (executor lain / gak pakai key), blok ini cuma
+            -- spam warn + skip stock tiap ronde. Default mati; nyalain manual
+            -- kalau pakai lisensi Delta.
             local skipKarenaLisensi = false
-            if MODE_JALAN and (os.time() - (LISENSI_CEK_TS or 0)) >= 60 then
+            if cfg.cek_lisensi == true and MODE_JALAN and (os.time() - (LISENSI_CEK_TS or 0)) >= 60 then
                 LISENSI_CEK_TS = os.time()
                 if lisensi_keadaan(cfg) ~= "ada" then
                     warn("[LISENSI] Delta HILANG -- PRIORITAS MUTLAK: pulihin DULU, skip stock ronde ini")
@@ -7855,7 +7955,7 @@ function run(cfg)
                         if isiRot ~= "" and isiRot:lower() ~= "off" and not cfg.rotasi_on then
                             cfg.rotasi_on = true
                             cfg.rotasi_barang = isiRot:match("^(.-)|") or isiRot
-                            ROT_TIM1 = nil   -- reset cache tim1 biar dihitung ulang
+                            atur_split(cfg)   -- v9.301: split ulang + reset cache tim1
                             info("[antrian] ROTASI kedeteksi di /perintah -> rotasi_on=true (Tim 2 STANDBY)")
                         end
                     end
@@ -8890,6 +8990,7 @@ function run(cfg)
                 isiRot = isiRot:gsub("^%s+", ""):gsub("%s+$", "")
                 if isiRot == "" or isiRot:lower() == "off" then
                     cfg.rotasi_on = false
+                    atur_split(cfg)   -- v9.301: balik semua client ke loop utama
                     warn("ROTASI dimatiin dari panel")
                     tambahLog("Rotasi tim: MATI")
                 else
@@ -8915,6 +9016,7 @@ function run(cfg)
                         cfg.rotasi_barang = isiRot
                     end
                     cfg.rotasi_on = true
+                    atur_split(cfg)   -- v9.301: split ulang (tim 2 = pool borong)
                     warn(("ROTASI nyala -> seed: %s | batch=%s open=%ss dunia=%s"):format(
                         cfg.rotasi_barang, tostring(cfg.rotasi_batch or 5), tostring(cfg.rotasi_open_sec or 80), cfg.rotasi_dunia or "sama"))
                     tambahLog("Rotasi tim: NYALA (" .. cfg.rotasi_barang .. ")")
@@ -9061,7 +9163,7 @@ function run(cfg)
                             if isiRot ~= "" and isiRot:lower() ~= "off" and not cfg.rotasi_on then
                                 cfg.rotasi_on = true
                                 cfg.rotasi_barang = isiRot:match("^(.-)|") or isiRot
-                                ROT_TIM1 = nil
+                                atur_split(cfg)   -- v9.301: split ulang + reset cache tim1
                                 info("[start-paksa] ROTASI ketangkep sebelum FORCE -> rotasi_on=true (Tim 2 STANDBY)")
                             end
                         end
@@ -9218,8 +9320,16 @@ function run(cfg)
             -- User: "jalankan salah satu tim -> LANGSUNG TEMBAK aja, gakmau di-close".
             -- Beda dari REJOIN (close+open) & CLOSE (tutup). Ini murni open_one (tembak)
             -- ke server baru buat client target, walau lagi jalan -> Roblox teleport.
-            if isi ~= lastIsi then
+            -- v9.302: override map panel (PUT /assign-ps) bisa berubah WALAU isi
+            -- sticky SAMA (TEMBAK:A dua kali buat 2 map beda) -> refresh throttled
+            -- + edge-trigger via ASSIGN_REV biar tembakan ke-2 gak diem.
+            if U:find("^TEMBAK:") and (os.time() - (ASSIGN_CEK_TS or 0)) >= 30 then
+                ASSIGN_CEK_TS = os.time()
+                refresh_ps()
+            end
+            if isi ~= lastIsi or ASSIGN_REV ~= (LAST_TEMBAK_REV or 0) then
                 lastIsi = isi
+                LAST_TEMBAK_REV = ASSIGN_REV or 0
                 local daftarT = isi:match("TEMBAK:([%w%.%_%-,]+)")
                 if daftarT then
                     local onlyT = {}
@@ -13801,6 +13911,23 @@ function pkgs_slot(cfg, dari, sampai)
     return out
 end
 
+-- v9.301: TANPA BATAS client (6/20/50+ HP). Split tim1/tim2 ngikutin KONDISI,
+-- bukan angka mati 10:
+--   rotasi OFF (bawaan) -> TIM1_AKHIR = SEMUA client (loop utama urus semua).
+--   rotasi ON           -> TIM1_AKHIR = cfg.tim1_akhir (bawaan 10), sisanya pool borong.
+-- cfg.tim1_akhir 0/kosong = auto. Dipanggil pas start + tiap rotasi on/off
+-- berubah. GLOBAL biar gak makan slot local run() yg udah mentok-200.
+function atur_split(cfg)
+    local total = #(split(cfg.pkgs or ""))
+    if total < 1 then total = 1 end
+    local mau = math.floor(tonumber(cfg.tim1_akhir) or 0)
+    if mau < 1 then mau = (cfg.rotasi_on and 10 or total) end
+    if mau > total then mau = total end
+    TIM1_AKHIR = mau
+    ROT_TIM1 = nil   -- cache rotasi_lewat dibangun ulang
+    return mau
+end
+
 -- buka GRUP client: set grid + join server. GAK dimanage (no denyut/lisensi/rejoin).
 -- v9.136: close GRUP client spesifik BARENGAN (am force-stop & ... wait dalam 1 su
 -- call) -- INSTANT, gak 1-1 lambat ~5-6s/client kayak close_all. Buat rotasi cepet.
@@ -14100,6 +14227,11 @@ end
 -- v9.122: helper -- pas rotasi_on, pkg tim 2 (11-20) HARUS dilewat (standby).
 -- return true = LEWAT (jangan sentuh). Cache tim1 set per cfg.pkgs.
 ROT_TIM1 = nil
+-- v9.302: override MAP per-akun (panel Move Account -> PUT /assign-ps bawa
+-- "place"). ASSIGN_PLACE[akun]=placeId (dibaca lapor -> wplace -> team map
+-- tujuan); ASSIGN_REV bump tiap set berubah (TEMBAK edge-trigger walau sticky
+-- SAMA). GLOBAL biar gak makan slot local.
+ASSIGN_PLACE, ASSIGN_SIG, ASSIGN_REV, LAST_TEMBAK_REV, ASSIGN_CEK_TS = {}, "", 0, 0, 0
 function rotasi_lewat(cfg, pkg)
     if not cfg.rotasi_on then return false end
     if not ROT_TIM1 or ROT_TIM1._src ~= (cfg.pkgs or "") then
@@ -14337,7 +14469,7 @@ if PERINTAH == "download" and (arg and arg[2] == "mercy") then
     print(C.BOLD .. C.C .. "\n=== DOWNLOAD MERCY (GitHub Releases worker_64) ===\n" .. C.N)
 
     -- v9.163: pola udah dibenerin (64.BIT, file 10 = .apk.1.apk) + versi dari
-    -- delta_versi.txt (bukan hardcoded lama). client 1-20.
+    -- delta_versi.txt (bukan hardcoded lama). v9.301: slot TANPA BATAS (dulu 1-20).
     local versiDL = cek_delta_versi(cfg) or "2.733.988"
     -- v9.257: FIX -- dulu HARDCODE `for n=1,20` -> arg[3] ("1-6"/"1-10") DIABAIKAN,
     -- selalu download SEMUA 20. Sekarang parse arg[3]: "1-6" / "1,2,3" / kosong=semua.
@@ -14357,14 +14489,14 @@ if PERINTAH == "download" and (arg and arg[2] == "mercy") then
         end
         return set
     end
-    local pilihan = parseSlot(arg[3], 20)
+    local pilihan = parseSlot(arg[3], 9999)   -- v9.301: TANPA BATAS slot (dulu 20)
     local files, slotMap = {}, {}   -- slotMap[i] = nomor slot asli (buat map package bener)
-    for n = 1, 20 do
+    for n = 1, 9999 do
         if pilihan[n] then files[#files + 1] = pola_apk(n, versiDL); slotMap[#files] = n end
     end
     if #files == 0 then
         err("Gak ada slot valid dari '" .. tostring(arg[3] or "") .. "'.")
-        info("Contoh: velium download mercy 1-6   |   1,2,3   |   kosong = semua 20")
+        info("Contoh: velium download mercy 1-6   |   1,2,3   |   kosong = semua")
         return
     end
     if arg[3] and arg[3] ~= "" then
@@ -15476,7 +15608,7 @@ end
 -- Client tetep kebuka setelah command selesai -> tutup manual / matiin app Termux.
 -- Contoh: `velium buka 10`, `velium buka 15`, `velium buka 20`.
 if PERINTAH == "buka" and tonumber(arg and arg[2] or "") then
-    local n = math.max(1, math.min(20, math.floor(tonumber(arg[2]))))
+    local n = math.max(1, math.min(9999, math.floor(tonumber(arg[2]))))   -- v9.301: TANPA BATAS (dulu 20)
     local cfg = load_config()
     if not cfg then err("Config belum ada. Jalanin `velium` dulu buat setup."); return end
     local pkgs = pkgs_slot(cfg, 1, n)
@@ -16072,9 +16204,10 @@ if PERINTAH == "panel" or PERINTAH == "uji" then
         end
     end
 
-    -- 3. GET /stat -- cek tim ini BENERAN kecatat
-    io.write(C.BOLD .. "3. GET /stat" .. C.N .. "     ")
-    local r3 = api_get(cfg, "/stat") or ""
+    -- 3. GET /tim -- cek tim ini BENERAN kecatat (dulu cek /stat yg cuma
+    -- berisi akun -> selalu "GAK ADA di daftar" walau POST /tim OK)
+    io.write(C.BOLD .. "3. GET /tim" .. C.N .. "      ")
+    local r3 = api_get(cfg, "/tim") or ""
     if r3 == "" then
         print(C.R .. "GAK NYAMBUNG" .. C.N)
     else
@@ -16082,7 +16215,7 @@ if PERINTAH == "panel" or PERINTAH == "uji" then
         if e3 then print(C.R .. "DITOLAK: " .. e3 .. C.N)
         else
             -- cari nama tim ini di jawaban
-            local ada = r3:find('"nama"%s*:%s*"' .. cfg.tim:gsub("%-", "%%-") .. '"') ~= nil
+            local ada = r3:find('"tim"%s*:%s*"' .. cfg.tim:gsub("(%W)", "%%%1") .. '"') ~= nil
             if ada then
                 print(C.G .. "OK" .. C.N .. "  " .. cfg.tim .. " KECATAT di panel")
             else
@@ -16473,7 +16606,7 @@ if PERINTAH ~= "" then
     info("   velium uji <client>       -> tembak 6 titik, cek pencetan nyampe apa nggak")
     info("   velium ukur <cl> <jumlah> -> set jendela ke ukuran N client, cari tombolnya")
     info("   velium pasang             -> pasang/atur RF baru (gantiin pasang.sh)")
-    info("   velium download [id] [pw] -> unduh & pasang APK client (bisa milih 1-10)")
+    info("   velium download [id] [pw] -> unduh & pasang APK client (bisa milih slot, tanpa batas)")
     info("   velium riwayat            -> pola rejoin & kick (buat diagnosa)")
     info("   velium cari <client>      -> worker cari sendiri tombol key + bypass sekalian")
     info("   velium pantau <client>    -> tiap dipencet, koordinatnya langsung nongol")
