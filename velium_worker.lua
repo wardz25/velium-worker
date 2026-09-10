@@ -2948,18 +2948,15 @@ function build_url(cfg, link_client)
         if lc:sub(1,4) ~= "http" then lc = "https://www.roblox.com/" .. lc:gsub("^/", "") end
         return lc   -- buka URL share apa adanya -> Roblox resolve sendiri
     elseif lc:find("privateServerLinkCode=") and lc:sub(1,4) == "http" then
-        -- v9.181: ganti placeId ke cfg.place_id (dunia AKTIF) -- joinCode universe-level.
-        -- v9.185: DEEP LINK roblox://...&linkCode= biar AUTO-JOIN (https URL cuma buka
-        -- HALAMAN GAME -> nyangkut Home, gak masuk). Komentar lama bilang linkCode
-        -- ditolak "no permission" -- itu dulu buat server ORANG LAIN. Sekarang tiap akun
-        -- server SENDIRI (owner) -> boleh join. placeId ikut dunia = universe-level.
-        -- v9.304: placeId IKUT LINK (/games/<id>), BUKAN cfg.place_id. Link PS bawa
-        -- map-nya sendiri (Move Account antar-map) -> join ke map ITU. Dulu selalu
-        -- cfg.place_id -> link GAG 1 malah join GAG 2 (map device). Tanpa /games/<id>
-        -- (format lain) -> fallback cfg.place_id (perilaku lama).
-        local code = lc:match("privateServerLinkCode=([^&%s]+)")
-        local pid = lc:match("/games/(%d+)") or cfg.place_id
-        return code and ("roblox://placeId="..pid.."&linkCode="..code) or lc
+        -- v9.181/v9.185: DULU link https diubah jadi deep link
+        -- roblox://placeId=X&linkCode=Y biar auto-join.
+        -- v9.307: JANGAN dikonversi -- dibuka APA ADANYA. TERBUKTI (v9.191):
+        -- privateServerLinkCode/linkCode CUMA ke-resolve di BROWSER/aplikasi
+        -- (Roblox yg terjemahin linkCode->accessCode di belakang layar).
+        -- Via am start deep link GAK ke-resolve -> masuk PUBLIC (bug: link PS
+        -- GAG 1 join public terus, mau berapa kali pun). URL https lengkap =
+        -- persis link manual + cara Hip Hub (am start -S + web URL, user-tested).
+        return lc
     elseif lc:find("accessCode=") then
         -- v7.36: PRIVATE SERVER via accessCode (dari velium getps -- API Roblox
         -- private-servers). Format: "accessCode=UUID". Join langsung ke PS akun.
@@ -3440,6 +3437,8 @@ function tunggu_jalan(pkg, batas, cek_batal, cfg, link)
                     local url_web
                     if link:find("share%?code=") or link:find("/share%?") then
                         url_web = link
+                    elseif link:find("privateServerLinkCode=") and link:sub(1,4) == "http" then
+                        url_web = link   -- v9.307: full PS URL apa adanya (deep link gak resolve -> public)
                     elseif kode_w then
                         url_web = "https://www.roblox.com/games/start?placeId="..pid_w.."&accessCode="..kode_w
                     else
