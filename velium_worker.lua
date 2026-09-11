@@ -9358,8 +9358,14 @@ function run(cfg)
                 ASSIGN_CEK_TS = os.time()
                 refresh_ps()
             end
-            if isi ~= lastIsi or ASSIGN_REV ~= (LAST_TEMBAK_REV or 0) then
+            -- v9.308: fire JUGA pas ts backend naik (klik Kirim baru) walau isi
+            -- sama persis. Tiap PUT panel = ts baru = perintah baru. Tanpa ini,
+            -- retry klik yg identik ditelan diam-diam (keliatan "do nothing").
+            -- Pola sama kayak RESTART_TS_PROSES. Steady sticky gak loop (ts sama).
+            local tsTembak = ambil_num(respTop, "ts") or 0
+            if isi ~= lastIsi or tsTembak ~= (LAST_TEMBAK_TS or 0) or ASSIGN_REV ~= (LAST_TEMBAK_REV or 0) then
                 lastIsi = isi
+                LAST_TEMBAK_TS = tsTembak
                 LAST_TEMBAK_REV = ASSIGN_REV or 0
                 local daftarT = isi:match("TEMBAK:([%w%.%_%-,]+)")
                 if daftarT then
@@ -14247,7 +14253,7 @@ ROT_TIM1 = nil
 -- "place"). ASSIGN_PLACE[akun]=placeId (dibaca lapor -> wplace -> team map
 -- tujuan); ASSIGN_REV bump tiap set berubah (TEMBAK edge-trigger walau sticky
 -- SAMA). GLOBAL biar gak makan slot local.
-ASSIGN_PLACE, ASSIGN_SIG, ASSIGN_REV, LAST_TEMBAK_REV, ASSIGN_CEK_TS = {}, "", 0, 0, 0
+ASSIGN_PLACE, ASSIGN_SIG, ASSIGN_REV, LAST_TEMBAK_REV, ASSIGN_CEK_TS, LAST_TEMBAK_TS = {}, "", 0, 0, 0, 0
 function rotasi_lewat(cfg, pkg)
     if not cfg.rotasi_on then return false end
     if not ROT_TIM1 or ROT_TIM1._src ~= (cfg.pkgs or "") then
