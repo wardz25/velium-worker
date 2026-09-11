@@ -7122,6 +7122,7 @@ function run(cfg)
         mapLink, mapPsNama = {}, {}
         ASSIGN_PLACE = {}
         local fp = {}
+        local nmA = {}
         -- parse tiap objek assign
         for obj in (r or ""):gmatch('{.-}') do
             local akun = obj:match('"akun"%s*:%s*"(.-)"')
@@ -7138,8 +7139,14 @@ function run(cfg)
                     ASSIGN_PLACE[akun] = place
                     fp[#fp+1] = akun .. "=" .. place
                 end
+                if (link and link ~= "") or (place and place ~= "") then
+                    nmA[#nmA+1] = akun
+                end
             end
         end
+        -- v9.309: SELALU lapor hasil baca (bukan cuma pas berubah). Override yg
+        -- hilang/rusak backend keliatan di sini (0 = TEMBAK nanti buka public).
+        info(("[assign] %d override panel buat %s: %s"):format(#nmA, cfg.tim, #nmA > 0 and table.concat(nmA, ",") or "-"))
         table.sort(fp)
         local sig = table.concat(fp, ";")
         if sig ~= (ASSIGN_SIG or "") then ASSIGN_SIG = sig; ASSIGN_REV = (ASSIGN_REV or 0) + 1 end
