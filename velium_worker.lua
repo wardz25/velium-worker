@@ -7144,12 +7144,15 @@ function run(cfg)
                 end
             end
         end
-        -- v9.309: SELALU lapor hasil baca (bukan cuma pas berubah). Override yg
-        -- hilang/rusak backend keliatan di sini (0 = TEMBAK nanti buka public).
-        info(("[assign] %d override panel buat %s: %s"):format(#nmA, cfg.tim, #nmA > 0 and table.concat(nmA, ",") or "-"))
+        -- v9.310: lapor CUMA pas berubah (dulu tiap baca -> spam tiap 60s,
+        -- penuhin log + ikut kekirim tiap heartbeat). Override yg hilang/rusak
+        -- tetap ketauan: perubahannya (termasuk jadi 0) selalu ke-log sekali.
         table.sort(fp)
         local sig = table.concat(fp, ";")
-        if sig ~= (ASSIGN_SIG or "") then ASSIGN_SIG = sig; ASSIGN_REV = (ASSIGN_REV or 0) + 1 end
+        if sig ~= (ASSIGN_SIG or "") then
+            ASSIGN_SIG = sig; ASSIGN_REV = (ASSIGN_REV or 0) + 1
+            info(("[assign] %d override panel buat %s: %s"):format(#nmA, cfg.tim, #nmA > 0 and table.concat(nmA, ",") or "-"))
+        end
     end
     refresh_ps()
     -- v7.36: GABUNG PS LINK dari getps (per akun, disimpen backend kolom ps_link).
