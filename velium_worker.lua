@@ -755,11 +755,17 @@ function punya_perintah(nama)
     return ok2 == true or ok2 == 0
 end
 
+-- v9.311: `up` WAJIB nyalain lagi worker yg dimatiin. Dulu `up` = stop +
+-- download TANPA restart -> tiap update fleet DIEM sampai ada yg `velium`
+-- manual. Makin sering update, makin sering fleet mati "misterius" pas AFK.
+-- Sekarang: inget dulu workernya jalan apa nggak; kalau iya, nyalain lagi
+-- abis update (BERHASIL ATAU GAGAL download -- pokoknya balik jalan).
 function tulis_skrip_up(diam)
     local PREFIX = os.getenv("PREFIX") or "/data/data/com.termux/files/usr"
     local jalur = PREFIX .. "/bin/up"
     local isi = table.concat({
         "#!" .. PREFIX .. "/bin/sh",
+        "if pgrep -f 'lua.*velium_worker.lua' >/dev/null 2>&1; then WAS_JALAN=1; else WAS_JALAN=; fi",
         "velium stop >/dev/null 2>&1",
         'echo "narik versi baru..."',
         -- v5.74: wget dipakai kalau curl rusak.
@@ -784,6 +790,26 @@ function tulis_skrip_up(diam)
         "else",
         '    echo "GAGAL -- yang keunduh bukan worker (belum di-push?)"',
         '    rm -f "$HOME/velium_worker.baru"',
+        "fi",
+        -- v9.311: worker yg tadi jalan DINYALAIN LAGI (detached, stdin /dev/null
+        -- = jawab prompt "Run?" otomatis jalan). Tanpa ini tiap `up` = fleet mati.
+        'if [ -n "$WAS_JALAN" ]; then',
+        '    if [ -f "$HOME/velium_worker_config.lua" ]; then',
+        '        LUA_BIN="$(command -v lua5.4 || command -v lua)";',
+        '        if [ -n "$LUA_BIN" ]; then',
+        '            echo "nyalain lagi worker yg tadi jalan..."',
+        '            if command -v setsid >/dev/null 2>&1; then',
+        '                setsid nohup "$LUA_BIN" "$HOME/velium_worker.lua" </dev/null >"$HOME/.velium_up.log" 2>&1 &',
+        '            else',
+        '                nohup "$LUA_BIN" "$HOME/velium_worker.lua" </dev/null >"$HOME/.velium_up.log" 2>&1 &',
+        '            fi',
+        '            echo "worker jalan lagi (cek: velium status)"',
+        '        else',
+        '            echo "lua gak ketemu -- nyalain manual: velium"',
+        '        fi',
+        '    else',
+        '        echo "config belum ada -- jalanin \'velium\' manual buat setup dulu"',
+        '    fi',
         "fi",
         "",
     }, "\n")
