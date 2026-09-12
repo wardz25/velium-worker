@@ -3043,8 +3043,8 @@ function open_one(cfg, pkg, link_client, alasan, pakai_S)
     -- v8.51: LOG url join (biar keliatan pakai link PS apa public). share?code=
     -- & privateServerLinkCode -> PS. Kalau cuma placeId -> public.
     do
-        local jenisJoin = (url:find("share%?code=") or url:find("/share%?")) and "PS-share"
-            or (url:find("privateServerLinkCode") and "PS-fall")
+        local jenisJoin = (url:find("share%?code=") or url:find("/share%?")) and "Private Server"
+            or (url:find("privateServerLinkCode") and "Private Server")
             or (url:find("linkCode") and "PS-linkcode")
             or (url:find("accessCode") and "PS-access")
             or "PUBLIC"
