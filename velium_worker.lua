@@ -6148,7 +6148,17 @@ function lapor(cfg, isi_perintah, cache)
         local denyutU = akunPkg ~= "" and DENYUT_UMUR[akunPkg] or nil
         -- v9.302: wplace = map override per-akun (panel Move Account). Backend
         -- pakai ini buat place akun -> team map tujuan. "" = ikut device.
-        local wpl = (akunPkg ~= "" and ASSIGN_PLACE and ASSIGN_PLACE[akunPkg]) or ""
+        -- v9.311: REAL (presence) menang atas tebakan panel: kalau akun beneran
+        -- main di place lain (link share isinya map beda), team ikut KENYATAAN.
+        local wpl = ""
+        if akunPkg ~= "" then
+            local rl = PRES_REAL and PRES_REAL[akunPkg:lower()]
+            if rl and (os.time() - (rl.ts or 0)) < 900 and (rl.place or ""):match("^%d+$") then
+                wpl = rl.place
+            elseif ASSIGN_PLACE then
+                wpl = ASSIGN_PLACE[akunPkg] or ""
+            end
+        end
         parts[#parts+1] = string.format('{"pkg":%s,"idx":%d,"run":%s,"akun":%s,"gantigagal":%s,"offlama":%d,"captcha":%s,"denyut":%s,"wplace":%s}',
             jstr(pkg), idxPkg, tostring(run), jstr(akunPkg), jstr(gg or ""), math.floor(tonumber(offL) or 0), tostring(capt),
             denyutU and tostring(math.floor(denyutU)) or "null", jstr(wpl))
@@ -10253,6 +10263,7 @@ function run(cfg)
                 local psLama = {}
                 for k, v in pairs(mapPsNama) do psLama[k] = v end
                 refresh_ps(); pcall(refresh_ps_getps)
+                pcall(presence_update, cfg)   -- v9.311: REAL place via presence (tiap 180s, throttle di dalam)
                 lastPsRefresh = now
                 -- v4.61: KUMPULIN dulu semua yang pindah, TUTUP BARENGAN, baru
                 -- buka satu-satu. Dulu tiap client ditutup+dibuka sendiri-sendiri
@@ -14291,6 +14302,91 @@ ROT_TIM1 = nil
 -- tujuan); ASSIGN_REV bump tiap set berubah (TEMBAK edge-trigger walau sticky
 -- SAMA). GLOBAL biar gak makan slot local.
 ASSIGN_PLACE, ASSIGN_SIG, ASSIGN_REV, LAST_TEMBAK_REV, ASSIGN_CEK_TS, LAST_TEMBAK_TS = {}, "", 0, 0, 0, 0
+-- v9.311: REAL place per-akun via Roblox PRESENCE API (bukan tebakan panel).
+-- Share link (?code=) cuma bisa di-resolve aplikasi Roblox (server cuma kasih
+-- Branch interstitial -> curl gak bisa tau placeId). Satu-satunya sumber REAL =
+-- presence: placeId beneran tempat akun lagi main. PRES_REAL[akunLower] =
+-- {place="123", ts=...}, TTL 15 mnt (flap menu->game gak bikin team kedip).
+PRES_REAL, PRES_UID, PRES_COOKIE, PRES_COOKIE_TS, PRES_TS = {}, {}, "", 0, 0
+function presence_cookie(cfg)
+    local now = os.time()
+    if PRES_COOKIE ~= "" and (now - (PRES_COOKIE_TS or 0)) < 1800 then return PRES_COOKIE end
+    local best = ""
+    for _, pkg in ipairs(split(cfg.pkgs or "")) do
+        local h = io.popen(("timeout 8 su -c %s 2>/dev/null"):format(shq(
+            "/data/data/com.termux/files/usr/bin/sqlite3 /data/data/" .. pkg .. "/app_webview/Default/Cookies " ..
+            "\"SELECT value FROM cookies WHERE name='.ROBLOSECURITY'\"")))
+        local raw = h and h:read("*all") or ""
+        if h then h:close() end
+        local ck = cookie_terpanjang(raw or "")
+        if ck ~= "" and #ck > #best then best = ck end
+        if #best > 2000 then break end
+    end
+    if best ~= "" then PRES_COOKIE, PRES_COOKIE_TS = best, now; return best end
+    return nil
+end
+function presence_update(cfg)
+    local now = os.time()
+    if (now - (PRES_TS or 0)) < 180 then return end
+    PRES_TS = now
+    local akunSet = {}
+    if mapAkun then for _, ak in pairs(mapAkun) do if ak and ak ~= "" then akunSet[ak:lower()] = ak end end end
+    if ASSIGN_PLACE then for ak in pairs(ASSIGN_PLACE) do if ak ~= "" then akunSet[ak:lower()] = ak end end end
+    local daftar = {}
+    for _, ak in pairs(akunSet) do daftar[#daftar+1] = ak end
+    if #daftar == 0 then return end
+    local cookie = presence_cookie(cfg)
+    if not cookie then return end
+    local tmp = (os.getenv("HOME") or ".") .. "/nx_pres.txt"
+    local hf = io.open(tmp, "w"); if not hf then return end
+    hf:write(".ROBLOSECURITY=" .. cookie); hf:close()
+    local function api(host, body)
+        local h = io.popen(("curl -s -4 -m 25 -H \"Cookie: $(cat %s)\" -H \"Content-Type: application/json\" -X POST -d %s \"https://%s\" 2>&1"):format(shq(tmp), shq(body), host))
+        local out = h and h:read("*all") or ""
+        if h then h:close() end
+        return out or ""
+    end
+    -- 1) username -> userId (yg belum tau), batch 50
+    local need = {}
+    for _, ak in ipairs(daftar) do if not PRES_UID[ak:lower()] then need[#need+1] = ak end end
+    local i = 1
+    while i <= #need do
+        local parts = {}
+        for j = i, math.min(i + 49, #need) do parts[#parts+1] = string.format('"%s"', need[j]:gsub('"', '')) end
+        local out = api("users.roblox.com/v1/usernames/users", '{"usernames":[' .. table.concat(parts, ",") .. '],"excludeBannedUsers":false}')
+        for obj in out:gmatch('{[^{}]-}') do
+            local nm = obj:match('"name"%s*:%s*"([^"]+)"') or obj:match('"requestedUsername"%s*:%s*"([^"]+)"')
+            local id = obj:match('"id"%s*:%s*(%d+)')
+            if nm and id then PRES_UID[nm:lower()] = id end
+        end
+        i = i + 50
+    end
+    -- 2) presence batch 100 -> REAL placeId yg lagi dimainin (type 2 = in-game)
+    local ids, id2ak = {}, {}
+    for _, ak in ipairs(daftar) do local id = PRES_UID[ak:lower()]; if id then ids[#ids+1] = id; id2ak[id] = ak:lower() end end
+    local k = 1
+    while k <= #ids do
+        local batch = {}
+        for j = k, math.min(k + 99, #ids) do batch[#batch+1] = ids[j] end
+        local out = api("presence.roblox.com/v1/presence/users", '{"userIds":[' .. table.concat(batch, ",") .. ']}')
+        for obj in out:gmatch('{[^{}]-}') do
+            local uid = obj:match('"userId"%s*:%s*(%d+)')
+            local typ = tonumber(obj:match('"userPresenceType"%s*:%s*(%d+)') or "-1")
+            local plc = obj:match('"placeId"%s*:%s*(%d+)')
+            local ak = uid and id2ak[uid]
+            if ak and typ == 2 and plc and plc ~= "0" then
+                local dulu = PRES_REAL[ak]
+                if dulu and dulu.place == plc then dulu.ts = now
+                else
+                    PRES_REAL[ak] = { place = plc, ts = now }
+                    info(("[real] %s main di place %s (presence, bukan tebakan)"):format(ak, plc))
+                end
+            end
+        end
+        k = k + 100
+    end
+    os.remove(tmp)
+end
 function rotasi_lewat(cfg, pkg)
     if not cfg.rotasi_on then return false end
     if not ROT_TIM1 or ROT_TIM1._src ~= (cfg.pkgs or "") then
